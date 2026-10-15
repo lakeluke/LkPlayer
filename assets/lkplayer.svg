@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Mirrors the icon drawn at runtime by main.cpp::buildAppIcon(). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1E2029"/>
+      <stop offset="1" stop-color="#0E0F13"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#5B3DF5"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="12" y="12" width="232" height="232" rx="58" ry="58" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="74" fill="none" stroke="url(#accent)" stroke-width="12"/>
+  <path d="M 107.5 84.5 L 184 128 L 107.5 171.5 Z" fill="url(#accent)"/>
+</svg>

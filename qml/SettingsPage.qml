@@ -384,12 +384,14 @@ Item {
                             {
                                 key: "embedded",
                                 title: "内嵌到界面",
-                                desc: "把 ffplay 的画面嵌入播放页，界面更统一；缩放窗口时会重新定位。"
+                                desc: App.embeddedSupported
+                                      ? "把 ffplay 的画面嵌入播放页，界面更统一；缩放窗口时会重新定位。"
+                                      : "当前平台无法把外部窗口嵌入界面，选择后 ffplay 仍会用自己的窗口播放。"
                             },
                             {
                                 key: "system",
                                 title: "系统播放器",
-                                desc: "交给 Windows 注册的视频播放器打开，不需要 ffmpeg / ffplay。"
+                                desc: "交给系统注册的播放器打开（Windows 关联程序 / Linux xdg-open），不需要 ffmpeg / ffplay。"
                             }
                         ]
 
@@ -397,10 +399,15 @@ Item {
                             required property var modelData
 
                             readonly property bool active: App.settings.playMode === modelData.key
+                            // Embedding needs a window system we can drive; the card
+                            // stays visible but inert where that is unavailable.
+                            readonly property bool available: modelData.key !== "embedded" || App.embeddedSupported
 
                             width: (column.width - Theme.spacing * 2) / 3
                             implicitHeight: modeColumn.implicitHeight + 32
                             radius: Theme.radiusLarge
+                            enabled: available
+                            opacity: available ? 1 : 0.45
                             color: active
                                    ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.14)
                                    : (Theme.dark ? Qt.rgba(1, 1, 1, 0.035) : Qt.rgba(1, 1, 1, 0.85))
@@ -470,6 +477,16 @@ Item {
                             }
                         }
                     }
+                }
+
+                // Where the ini actually lives differs between the portable
+                // archive and an installed package, so show it.
+                Text {
+                    width: parent.width
+                    text: (App.portable ? "便携模式 · " : "配置 · ") + App.settingsPath
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontCaption
+                    elide: Text.ElideMiddle
                 }
             }
 

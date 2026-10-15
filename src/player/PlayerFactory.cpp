@@ -14,7 +14,7 @@ namespace PlayerFactory {
 PlayerController *create(const QString &mode, const QString &ffplayPath, QObject *parent)
 {
     PlayerController *player = nullptr;
-    if (mode == QLatin1String("embedded"))
+    if (mode == QLatin1String("embedded") && supportsEmbedded())
         player = new EmbeddedPlayer(parent);
     else if (mode == QLatin1String("system"))
         player = new SystemPlayer(parent);
@@ -27,6 +27,15 @@ PlayerController *create(const QString &mode, const QString &ffplayPath, QObject
     else
         qCInfo(lcPlayerFactory) << "created" << player->mode() << "player (no external tools)";
     return player;
+}
+
+bool supportsEmbedded()
+{
+#ifdef Q_OS_WIN
+    return true;
+#else
+    return false;
+#endif
 }
 
 bool applyTools(PlayerController *player, const QString &ffplayPath)

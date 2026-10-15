@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=LkPlayer
+GenericName=Media Player
+Comment=本地媒体库播放器：递归扫描目录，平铺展示，调用 ffmpeg / ffplay 播放
+Exec=lkplayer
+Icon=lkplayer
+Terminal=false
+Categories=AudioVideo;AudioVideoPlayer;Video;Player;Qt;
+Keywords=video;media;library;ffmpeg;ffplay;
+StartupWMClass=LkPlayer

@@ -18,6 +18,7 @@
 #include <QTextStream>
 
 #include "app/AppController.h"
+#include "app/AppPaths.h"
 #include "thumb/ThumbnailProvider.h"
 #include "thumb/ThumbnailService.h"
 
@@ -63,9 +64,7 @@ QIcon buildAppIcon()
 /// Writes log output to a file so the WIN32 (console-less) build stays debuggable.
 void installLogHandler()
 {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    QDir().mkpath(dir);
-    const QString path = QDir(dir).absoluteFilePath(QStringLiteral("lkplayer.log"));
+    const QString path = QDir(AppPaths::logDir()).absoluteFilePath(QStringLiteral("lkplayer.log"));
 
     qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &context, const QString &message) {
         static QMutex mutex;
@@ -90,10 +89,7 @@ void installLogHandler()
             break;
         }
 
-        const QString dir = qEnvironmentVariable("LKPLAYER_LOG_DIR",
-                                                 QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
-        QDir().mkpath(dir);
-        QFile file(QDir(dir).absoluteFilePath(QStringLiteral("lkplayer.log")));
+        QFile file(QDir(AppPaths::logDir()).absoluteFilePath(QStringLiteral("lkplayer.log")));
         if (!file.open(QIODevice::Append | QIODevice::Text))
             return;
 

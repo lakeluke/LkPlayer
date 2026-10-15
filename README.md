@@ -1,8 +1,8 @@
 # LkPlayer
 
-面向本地媒体库的 Windows 桌面播放器。指定一个媒体库根目录，程序递归扫描其中的视频与旁挂资源
-（海报、nfo、字幕、剧照），以卡片网格提供「全库平铺」和「逐层钻取」两种浏览方式，支持按 nfo 标签过滤，
-并提供三种播放方式：ffplay 独立窗口、ffplay 画面内嵌到播放页、或直接交给 Windows 注册的视频播放器。
+面向本地媒体库的跨平台桌面播放器（Windows / Linux）。指定一个媒体库根目录，程序递归扫描其中的视频与
+旁挂资源（海报、nfo、字幕、剧照），以卡片网格提供「全库平铺」和「逐层钻取」两种浏览方式，支持按 nfo
+标签过滤，并提供三种播放方式：ffplay 独立窗口、ffplay 画面内嵌到播放页、或直接交给系统注册的播放器。
 
 ## 环境依赖
 
@@ -11,21 +11,43 @@
 | Qt | 6.5 及以上（开发环境 6.11.2） | Core / Gui / Widgets / Qml / Quick / QuickControls2 / QuickDialogs2 / QuickLayouts / QuickEffects / Svg / Xml / Concurrent |
 | CMake | 3.21 及以上 | |
 | C++ | C++17 | |
-| 编译器 | MinGW-w64 或 clang（MSYS2 UCRT64 已验证） | |
+| Windows | MinGW-w64 或 clang（MSYS2 UCRT64 已验证） | |
+| Linux | GCC（Debian 13 / Ubuntu 25.04 起提供 Qt 6.5+） | 需 `qt6-base-dev`、`qt6-declarative-dev`、`qt6-svg-dev` |
 | ffmpeg / ffplay | 任意近期版本 | 播放与封面抽帧，路径由用户在设置中指定 |
 
 > 播放完全依赖外部 `ffplay` 进程，未使用 `Qt6Multimedia`（本环境不提供该模块）。
 
 ## 构建
 
-以 MSYS2 UCRT64 为例：
+Windows（MSYS2 UCRT64）：
 
 ```bash
 cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-产物：`build/LkPlayer.exe`（GUI 程序，无控制台）与 `build/tst_core.exe`（单元测试）。
+Linux：
+
+```bash
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-declarative-dev qt6-svg-dev
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+cmake --build build
+sudo cmake --install build      # /usr/bin/lkplayer
+```
+
+产物：Windows 为 `build/LkPlayer.exe`（GUI 程序，无控制台），Linux 为 `build/lkplayer`。
+
+### 平台差异
+
+| 能力 | Windows | Linux |
+| --- | --- | --- |
+| 独立窗口播放 | 支持 | 支持 |
+| 内嵌到播放页 | 支持（Win32 子窗口 + `SDL_WINDOWID`） | 不支持，自动回退为独立窗口 |
+| 系统播放器 | `QDesktopServices` → 关联程序 | `QDesktopServices` → `xdg-open` |
+| 便携模式 | 支持（见下） | 支持（需自行放置 `portable.txt`） |
+
+嵌入外部窗口需要能直接操纵窗口系统的 API，Linux 下只有 Win32 等价实现存在，因此该模式在设置中
+会置灰并说明原因；其余功能完全一致。
 
 ## 运行与首次配置
 
@@ -100,14 +122,34 @@ cd build && ctest --output-on-failure
 
 ## 发布
 
-推送版本 tag 会触发 `.github/workflows/release.yml`，在 `windows-latest` 上用
-MSYS2 UCRT64 + Qt 6 完成「编译 → 单元测试 → windeployqt 打包 → 创建 GitHub Release」：
+推送版本 tag 会触发 `.github/workflows/release.yml`，并行产出三个包并创建 GitHub Release：
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-产物为 `LkPlayer-<tag>-win64.zip`（内含 `LkPlayer.exe`、Qt 运行时与 `qt.conf`）。
+| 产物 | 平台 | 说明 |
+| --- | --- | --- |
+| `LkPlayer-<tag>-win64-portable.zip` | Windows x64 | 便携版：解压即用，内置 Qt 运行时与 `qt.conf` |
+| `lkplayer_<version>_amd64.deb` | Debian / Ubuntu | 链接发行版 Qt，依赖由 `dpkg-shlibdeps` 自动计算 |
+| `LkPlayer-<version>-x86_64.AppImage` | 通用 Linux | 内置 Qt 运行时与 QML 模块 |
+
 也可在 Actions 页面用 `Run workflow` 手动触发（此时只上传构建产物，不创建 Release）。
-该压缩包不含 ffmpeg / ffplay，仍需按「运行与首次配置」自行设置工具目录。
+Windows 便携包与 AppImage 都不含 ffmpeg / ffplay，仍需按「运行与首次配置」自行设置工具目录。
+
+Linux 构建跑在 `debian:trixie` 容器内：它是带 Qt 6.5+ 的最旧发行版（Qt 6.8.2），
+`.deb` 因此能直接复用发行版 Qt 而不必捆绑运行时。
+
+### 便携模式
+
+Windows 包里带有 `portable.txt` 标记，程序会把可写状态全部放在程序目录，方便放进 U 盘：
+
+```
+Data/lkplayer.ini     设置
+Data/covers/          封面缓存
+Data/lkplayer.log     日志
+```
+
+删掉 `portable.txt` 即可回到每用户目录（`%LOCALAPPDATA%\LkPlayer\LkPlayer`）。
+设置页会显示当前使用的配置文件路径。

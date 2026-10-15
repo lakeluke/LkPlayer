@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(LkPlayer VERSION 0.1.0 LANGUAGES CXX)
+# CI passes the release tag (without the leading "v") so that the .deb and the
+# AppImage carry the same version as the git tag they were built from.
+if(DEFINED LKPLAYER_VERSION AND LKPLAYER_VERSION)
+    project(LkPlayer VERSION ${LKPLAYER_VERSION} LANGUAGES CXX)
+else()
+    project(LkPlayer VERSION 0.1.0 LANGUAGES CXX)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,6 +37,8 @@ set(LK_SOURCES
 
     src/app/AppController.h
     src/app/AppController.cpp
+    src/app/AppPaths.h
+    src/app/AppPaths.cpp
 
     src/core/FolderNode.h
     src/core/MediaItem.h
@@ -144,8 +152,45 @@ if(WIN32)
     target_link_libraries(LkPlayer PRIVATE user32 gdi32 dwmapi shell32)
 endif()
 
+# --------------------------------------------------------------------- install
+# Linux installs follow the usual prefix layout; the Windows build is shipped as
+# a portable archive assembled in CI, so it only needs the executable.
+if(UNIX AND NOT APPLE)
+    # Lower case binary name to match the desktop entry and distro habits.
+    set_target_properties(LkPlayer PROPERTIES OUTPUT_NAME lkplayer)
+endif()
+
+install(TARGETS LkPlayer RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if(UNIX AND NOT APPLE)
+    install(FILES assets/lkplayer.desktop
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
+    install(FILES assets/lkplayer.svg
+            DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps)
+endif()
+
 option(LKPLAYER_BUILD_TESTS "Build LkPlayer unit tests" ON)
 if(LKPLAYER_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# ------------------------------------------------------------------ packaging
+# The .deb links against the distribution Qt, so dpkg-shlibdeps derives the
+# library dependencies; only the QML modules have to be named explicitly because
+# nothing links against them.
+if(UNIX AND NOT APPLE)
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_PACKAGE_NAME "lkplayer")
+    set(CPACK_PACKAGE_VENDOR "LkPlayer")
+    set(CPACK_PACKAGE_CONTACT "LkPlayer <noreply@example.com>")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Local media library player built on Qt Quick and ffplay")
+    set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "video")
+    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/lakeluke/LkPlayer")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    # Single line: it is written straight into the control file's Depends field.
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "qt6-qpa-plugins, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtquick-effects, qml6-module-qtqml-workerscript, qml6-module-qt-labs-folderlistmodel")
+    include(CPack)
 endif()

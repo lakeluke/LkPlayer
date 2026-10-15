@@ -320,12 +320,15 @@ QString resolveToolIn(const QString &dir, const QString &toolBaseName)
     if (!directory.exists())
         return QString();
 
-    const QStringList candidates = {
-        toolBaseName + QStringLiteral(".exe"),
-        toolBaseName,
-        toolBaseName + QStringLiteral(".cmd"),
-        toolBaseName + QStringLiteral(".bat"),
-    };
+    QStringList candidates;
+#ifdef Q_OS_WIN
+    candidates = {toolBaseName + QStringLiteral(".exe"), toolBaseName + QStringLiteral(".cmd"),
+                  toolBaseName + QStringLiteral(".bat"), toolBaseName};
+#else
+    // Unix executables carry no suffix; .exe stays as a last resort so a Wine
+    // based tool directory still resolves.
+    candidates = {toolBaseName, toolBaseName + QStringLiteral(".exe")};
+#endif
     for (const QString &candidate : candidates) {
         const QFileInfo info(directory.absoluteFilePath(candidate));
         if (info.exists() && info.isFile())

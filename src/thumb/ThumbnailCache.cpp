@@ -5,7 +5,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QLoggingCategory>
-#include <QStandardPaths>
+#include "app/AppPaths.h"
 
 Q_LOGGING_CATEGORY(lcThumbCache, "lk.thumb.cache")
 
@@ -16,9 +16,8 @@ const QString kExtension = QStringLiteral("jpg");
 ThumbnailCache::ThumbnailCache(QObject *parent)
     : QObject(parent)
 {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    m_directory = QDir(base).absoluteFilePath(QStringLiteral("covers"));
-    if (!QDir().mkpath(m_directory))
+    m_directory = AppPaths::coverCacheDir();
+    if (!QDir().exists(m_directory))
         qCWarning(lcThumbCache) << "could not create thumbnail cache directory" << m_directory;
 }
 

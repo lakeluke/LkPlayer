@@ -61,6 +61,11 @@ class AppController : public QObject
     Q_PROPERTY(QVariantMap currentItem READ currentItem NOTIFY currentItemChanged)
     Q_PROPERTY(QString playbackError READ playbackError NOTIFY playerChanged)
 
+    // Platform capabilities / packaging mode, both fixed for a given build.
+    Q_PROPERTY(bool embeddedSupported READ embeddedSupported CONSTANT)
+    Q_PROPERTY(bool portable READ isPortable CONSTANT)
+    Q_PROPERTY(QString settingsPath READ settingsPath CONSTANT)
+
 public:
     explicit AppController(QObject *parent = nullptr);
     ~AppController() override;
@@ -93,6 +98,13 @@ public:
 
     QVariantMap currentItem() const { return m_currentItem; }
     QString playbackError() const;
+
+    /** False where ffplay cannot be hosted inside our own window (Linux). */
+    bool embeddedSupported() const;
+    /** True when the settings live next to the executable (portable build). */
+    bool isPortable() const;
+    /** Full path of the ini file, shown in the settings page. */
+    QString settingsPath() const;
 
     // QML drives these directly (search field, view switch, folder pickers), so
     // they have to be invokable: being a Q_PROPERTY WRITE accessor is not enough.

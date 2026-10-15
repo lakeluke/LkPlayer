@@ -1,0 +1,12 @@
+LkPlayer portable build
+=======================
+
+This marker makes LkPlayer keep its writable state next to this executable
+instead of in your user profile:
+
+    Data/lkplayer.ini          settings
+    Data/covers/               generated cover cache
+    Data/lkplayer.log          log file
+
+Delete this file to go back to the per-user locations
+(%LOCALAPPDATA%\LkPlayer\LkPlayer on Windows).

@@ -6,6 +6,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 
+#include "app/AppPaths.h"
 #include "core/PathUtils.h"
 
 Q_LOGGING_CATEGORY(lcSettings, "lk.settings")
@@ -28,9 +29,7 @@ bool isPlayMode(const QString &mode)
 SettingsStore::SettingsStore(QObject *parent)
     : QObject(parent)
 {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
-    QDir().mkpath(dir);
-    m_configFilePath = QDir(dir).absoluteFilePath(QStringLiteral("lkplayer.ini"));
+    m_configFilePath = AppPaths::settingsFile();
 }
 
 void SettingsStore::load()

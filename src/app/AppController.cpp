@@ -7,6 +7,7 @@
 #include <QQuickWindow>
 #include <QUrl>
 
+#include "app/AppPaths.h"
 #include "core/LibraryScanner.h"
 #include "core/PathUtils.h"
 #include "model/FolderListModel.h"
@@ -613,11 +614,29 @@ QString AppController::formatDuration(double seconds) const
     return PathUtils::formatDuration(seconds);
 }
 
+bool AppController::embeddedSupported() const
+{
+    return PlayerFactory::supportsEmbedded();
+}
+
+bool AppController::isPortable() const
+{
+    return AppPaths::isPortable();
+}
+
+QString AppController::settingsPath() const
+{
+    return m_settings ? m_settings->configFilePath() : QString();
+}
+
 QString AppController::nextPlayMode() const
 {
     const QString mode = m_settings->playMode();
+    // Skip the embedded backend where the platform cannot host a foreign window.
+    if (!embeddedSupported() && mode == QLatin1String("embedded"))
+        return QStringLiteral("standalone");
     if (mode == QLatin1String("standalone"))
-        return QStringLiteral("embedded");
+        return embeddedSupported() ? QStringLiteral("embedded") : QStringLiteral("system");
     if (mode == QLatin1String("embedded"))
         return QStringLiteral("system");
     return QStringLiteral("standalone");

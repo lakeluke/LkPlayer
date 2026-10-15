@@ -94,10 +94,12 @@ public:
     QVariantMap currentItem() const { return m_currentItem; }
     QString playbackError() const;
 
-    void setLibraryRoot(const QString &path);
-    void setViewMode(const QString &mode);
-    void setSelectedTags(const QStringList &tags);
-    void setSearchText(const QString &text);
+    // QML drives these directly (search field, view switch, folder pickers), so
+    // they have to be invokable: being a Q_PROPERTY WRITE accessor is not enough.
+    Q_INVOKABLE void setLibraryRoot(const QString &path);
+    Q_INVOKABLE void setViewMode(const QString &mode);
+    Q_INVOKABLE void setSelectedTags(const QStringList &tags);
+    Q_INVOKABLE void setSearchText(const QString &text);
 
 public slots:
     /** Called from QML once the application window exists. */

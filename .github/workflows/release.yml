@@ -1,0 +1,89 @@
+name: Release
+
+# Builds a Windows package whenever a version tag is pushed:
+#   git tag v0.1.0 && git push origin v0.1.0
+# `workflow_dispatch` allows producing the same package on demand.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows x64 (MSYS2 UCRT64 / Qt 6)
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2 UCRT64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-declarative
+            mingw-w64-ucrt-x86_64-qt6-svg
+
+      - name: Configure
+        run: cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Deploy Qt runtime
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp build/LkPlayer.exe dist/
+          windeployqt6 dist/LkPlayer.exe --qmldir qml --no-translations
+
+          # windeployqt only brings Qt's own binaries. Pull in the MinGW runtime
+          # and the third-party DLLs it leaves behind (icu, harfbuzz, freetype,
+          # glib, ...) and repeat until the closure stops growing.
+          for _pass in 1 2 3; do
+            find dist \( -name '*.dll' -o -name '*.exe' \) | while read -r f; do
+              ldd "$f" 2>/dev/null | grep -o '/ucrt64/bin/[^ ]*' || true
+            done | sort -u | while read -r lib; do
+              cp -n "$lib" dist/ || true
+            done
+          done
+
+          # Without it Qt derives no prefix and reports every QML module as
+          # "not installed". windeployqt does not write one for MinGW builds.
+          printf '[Paths]\nPrefix = .\nQml2Imports = qml\nPlugins = .\n' > dist/qt.conf
+
+          cp README.md dist/
+
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path "dist\*" -DestinationPath "LkPlayer-${{ github.ref_name }}-win64.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LkPlayer-${{ github.ref_name }}-win64
+          path: LkPlayer-${{ github.ref_name }}-win64.zip
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: LkPlayer-${{ github.ref_name }}-win64.zip
+          generate_release_notes: true

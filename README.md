@@ -97,3 +97,17 @@ cd build && ctest --output-on-failure
 
 覆盖 nfo 解析（完整 / 字段缺失 / 截断 XML）、扩展名与时长格式化、封面 ID 编解码，
 以及扫描时的层级遍历与旁挂资源关联。
+
+## 发布
+
+推送版本 tag 会触发 `.github/workflows/release.yml`，在 `windows-latest` 上用
+MSYS2 UCRT64 + Qt 6 完成「编译 → 单元测试 → windeployqt 打包 → 创建 GitHub Release」：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+产物为 `LkPlayer-<tag>-win64.zip`（内含 `LkPlayer.exe`、Qt 运行时与 `qt.conf`）。
+也可在 Actions 页面用 `Run workflow` 手动触发（此时只上传构建产物，不创建 Release）。
+该压缩包不含 ffmpeg / ffplay，仍需按「运行与首次配置」自行设置工具目录。

@@ -1,8 +1,10 @@
 import QtQuick
 import LkPlayer
 
-// Rectangle that hosts the native ffplay window in embedded mode. It reports
-// its geometry (in window coordinates) to C++ so the child window can follow.
+// Playback stage. In embedded mode libmpv paints straight into this item (see
+// MpvItem), so the video is part of the Qt Quick scene instead of a foreign
+// window that has to be positioned after it. The geometry reporting below is
+// what the ffplay fallback backend needs to place its own window.
 Item {
     id: root
 
@@ -19,19 +21,28 @@ Item {
         App.setVideoRect(point.x, point.y, root.width, root.height);
     }
 
+    /** Tells the window-level video item whether it belongs to this page now. */
+    function syncVideo() {
+        App.setVideoVisible(visible && embedded && active);
+    }
+
     onXChanged: reportGeometry()
     onYChanged: reportGeometry()
     onWidthChanged: reportGeometry()
     onHeightChanged: reportGeometry()
+    // `active` also changes when playback starts or stops, which the video item
+    // has to follow: it only renders while the stage owns the picture.
+    onActiveChanged: syncVideo()
+    onEmbeddedChanged: syncVideo()
     onVisibleChanged: {
-        App.setVideoVisible(visible && embedded && active);
+        syncVideo();
         if (visible)
             reportGeometry();
     }
 
     Component.onCompleted: {
         reportGeometry();
-        App.setVideoVisible(embedded && active);
+        syncVideo();
     }
 
     Component.onDestruction: App.setVideoVisible(false)
@@ -49,6 +60,11 @@ Item {
         radius: Theme.radiusLarge
         color: "#05060A"
         clip: true
+
+        // The picture itself lives in Main.qml: one MpvItem for the whole
+        // window, positioned onto whatever rectangle the current page reports.
+        // Keeping it out of the page is what lets playback survive the page
+        // being destroyed - a destroyed item takes mpv's render context with it.
 
         // Backdrop when nothing is playing yet.
         PosterImage {
@@ -177,5 +193,6 @@ Item {
                 }
             }
         }
+
     }
 }

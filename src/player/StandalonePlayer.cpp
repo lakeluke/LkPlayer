@@ -30,9 +30,6 @@ StandalonePlayer::StandalonePlayer(QObject *parent)
             setPaused(true);
         }
     });
-    connect(m_process, &FfplayProcess::windowFound, this, [this](quintptr handle) {
-        onWindowFound(handle);
-    });
     connect(m_process, &FfplayProcess::failed, this, [this](const QString &message) {
         qCWarning(lcStandalone) << "ffplay failed:" << message;
         setError(message);
@@ -40,7 +37,6 @@ StandalonePlayer::StandalonePlayer(QObject *parent)
     });
     connect(m_process, &FfplayProcess::finished, this, [this](int exitCode) {
         Q_UNUSED(exitCode);
-        afterStop();
         setPositionInternal(0.0);
         if (state() != Errored)
             setState(Stopped);
@@ -78,8 +74,8 @@ void StandalonePlayer::startPlayback(const QString &filePath, double startSecond
         return;
     }
 
-    beforeStart();
-    m_process->start(filePath, startSeconds, windowArguments(), title(), buildEnvironment());
+    // ffplay draws its own top level window; only the title is ours to set.
+    m_process->start(filePath, startSeconds, QStringList(), title(), buildEnvironment());
 }
 
 void StandalonePlayer::restartAt(double seconds)
@@ -97,7 +93,6 @@ void StandalonePlayer::stopPlayback()
     m_resumePaused = false;
     if (m_process)
         m_process->stop();
-    afterStop();
 }
 
 void StandalonePlayer::setPausedImpl(bool paused)

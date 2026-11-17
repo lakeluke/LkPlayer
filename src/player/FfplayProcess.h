@@ -12,15 +12,14 @@ class QTimer;
 /**
  * Platform helpers around native windows. Only Windows is implemented;
  * everywhere else these are no-ops so the application still builds.
+ *
+ * ffplay has no client API, so the standalone backend has to find its window to
+ * deliver keyboard shortcuts. (Embedded playback no longer goes through ffplay;
+ * it is rendered in-process by libmpv.)
  */
 namespace NativeWindow {
-quintptr findProcessWindow(qint64 pid, quintptr hostHint = 0);
+quintptr findProcessWindow(qint64 pid);
 bool sendKey(quintptr handle, int virtualKey);
-quintptr createChildHost(quintptr parent, int x, int y, int width, int height);
-void setChildGeometry(quintptr child, int x, int y, int width, int height);
-void setChildVisible(quintptr child, bool visible);
-void attachToHost(quintptr child, quintptr host);
-void destroyWindow(quintptr handle);
 } // namespace NativeWindow
 
 /**
@@ -44,13 +43,7 @@ public:
     void setSeekInterval(double seconds);
     double seekInterval() const { return m_seekInterval; }
 
-    /** Optional container window used when looking for the ffplay window. */
-    void setWindowHostHint(quintptr host);
-
-    /**
-     * Starts ffplay. `windowArgs` are the window specific options
-     * (`-noborder -x -y` for the embedded backend).
-     */
+    /** Starts ffplay; `windowArgs` are extra window options for its own window. */
     void start(const QString &filePath,
                double startSeconds,
                const QStringList &windowArgs,
@@ -104,7 +97,6 @@ private:
     qint64 m_pid = 0;
     quintptr m_window = 0;
     int m_windowPolls = 0;
-    quintptr m_windowHostHint = 0;
     /** Shortcuts requested before ffplay's window existed. */
     QByteArray m_pendingKeys;
 };

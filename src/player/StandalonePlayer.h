@@ -32,12 +32,7 @@ protected:
     void applyVolumeImpl() override;
     void applyMuteImpl() override;
 
-    // Window behaviour, overridden by the embedded backend ------------------
-    virtual void beforeStart() {}
-    virtual void afterStop() {}
-    virtual QStringList windowArguments() const { return QStringList(); }
-    virtual QProcessEnvironment buildEnvironment() const;
-    virtual void onWindowFound(quintptr handle) { Q_UNUSED(handle); }
+    QProcessEnvironment buildEnvironment() const;
 
     FfplayProcess *process() const { return m_process; }
 

@@ -129,11 +129,64 @@ Window {
         Component.onCompleted: loader.sourceComponent = libraryComponent
     }
 
+    // ------------------------------------------------------------ video layer
+    // One picture item for the whole window, above the pages. A page-owned item
+    // would be destroyed together with the page, which also tears down mpv's
+    // render context and aborts playback; here the pages only publish the
+    // rectangle the picture should fill, so the player page and the
+    // picture-in-picture window hand it back and forth without a reload.
+    MpvItem {
+        id: videoLayer
+
+        readonly property bool showing: App.videoVisible
+                                        && App.videoRect.width > 1
+                                        && App.videoRect.height > 1
+
+        // Parked off-screen instead of hidden: an invisible item is dropped from
+        // the scene graph, which would destroy the render context as well.
+        x: showing ? App.videoRect.x : -20000
+        y: showing ? App.videoRect.y : -20000
+        width: Math.max(1, App.videoRect.width)
+        height: Math.max(1, App.videoRect.height)
+        z: 500
+        player: App.player
+
+        Behavior on x {
+            enabled: videoLayer.showing
+            NumberAnimation {
+                duration: 180
+                easing: Easing.OutCubic
+            }
+        }
+        Behavior on y {
+            enabled: videoLayer.showing
+            NumberAnimation {
+                duration: 180
+                easing: Easing.OutCubic
+            }
+        }
+        Behavior on width {
+            enabled: videoLayer.showing
+            NumberAnimation {
+                duration: 180
+                easing: Easing.OutCubic
+            }
+        }
+        Behavior on height {
+            enabled: videoLayer.showing
+            NumberAnimation {
+                duration: 180
+                easing: Easing.OutCubic
+            }
+        }
+    }
+
     Component {
         id: libraryComponent
 
         LibraryPage {
             onSettingsRequested: pageHost.navigateTo("settings")
+            onPlayRequested: pageHost.navigateTo("player")
         }
     }
 

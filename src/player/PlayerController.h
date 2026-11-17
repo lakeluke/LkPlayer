@@ -9,9 +9,10 @@
  * Backend agnostic playback contract.
  *
  * The public API implements the shared bookkeeping (state machine, volume,
- * mute, position) while the actual process handling lives behind a handful of
- * protected hooks. Two implementations exist: an ffplay process in its own
- * window and an ffplay process reparented into the Qt Quick window.
+ * mute, position) while the actual playback lives behind a handful of
+ * protected hooks. Three implementations exist: libmpv rendering into the Qt
+ * Quick scene (embedded), an ffplay process in its own window (standalone) and
+ * a hand-off to the system player.
  */
 class PlayerController : public QObject
 {
@@ -80,10 +81,22 @@ public:
     /** False when another application owns playback (seek/volume do not apply). */
     virtual bool isControllable() const { return true; }
 
+    /**
+     * False for backends that decode in-process (libmpv): no ffmpeg/ffplay
+     * installation is needed for them to start playing.
+     */
+    virtual bool requiresExternalTools() const { return true; }
+
     void setWindowHandle(quintptr handle);
 
 public slots:
     void open(const QString &filePath, const QString &title = QString());
+    /**
+     * Starts a file at `startSeconds`. Used when coming back to the player page:
+     * the render context is gone by then, so mpv has to load the file again and
+     * can jump straight to the remembered position.
+     */
+    void openAt(const QString &filePath, const QString &title, double startSeconds);
     void togglePlayPause();
     void setPaused(bool paused);
     void stop();

@@ -15,6 +15,7 @@
 #include "model/FolderListModel.h"
 #include "model/MediaFilterProxyModel.h"
 #include "model/MediaItemModel.h"
+#include "player/MpvEngine.h"
 #include "player/PlayerController.h"
 #include "player/PlayerFactory.h"
 #include "settings/SettingsStore.h"
@@ -98,7 +99,7 @@ AppController::AppController(QObject *parent)
 
     wireSettings();
 
-    m_player = PlayerFactory::create(m_settings->playMode(), m_settings->ffplayPath(), this);
+    m_player = PlayerFactory::create(m_settings->playMode(), m_settings->ffplayPath(), ensureMpvEngine(), this);
     connect(m_player, &PlayerController::errorChanged, this, &AppController::playerChanged);
 
     m_thumbService->setFfmpegPath(m_settings->ffmpegPath());
@@ -571,7 +572,7 @@ void AppController::rebuildPlayer()
         m_player->deleteLater();
     }
 
-    m_player = PlayerFactory::create(mode, m_settings->ffplayPath(), this);
+    m_player = PlayerFactory::create(mode, m_settings->ffplayPath(), ensureMpvEngine(), this);
     if (m_player) {
         m_player->setWindowHandle(m_windowHandle);
         connect(m_player, &PlayerController::errorChanged, this, &AppController::playerChanged);
@@ -580,11 +581,33 @@ void AppController::rebuildPlayer()
     emit playerChanged();
 }
 
+MpvEngine *AppController::ensureMpvEngine()
+{
+#ifdef LKPLAYER_HAVE_MPV
+    if (m_mpvEngine)
+        return m_mpvEngine;
+
+    // Only the embedded mode renders through libmpv; creating the instance for
+    // the other modes would start audio/video threads nobody ever uses.
+    if (m_settings->playMode() != QLatin1String("embedded"))
+        return nullptr;
+
+    m_mpvEngine = new MpvEngine(this);
+    if (m_mpvEngine->isValid())
+        qCInfo(lcApp) << "created the shared libmpv instance";
+    else
+        qCWarning(lcApp) << "libmpv is unavailable:" << m_mpvEngine->lastError();
+    return m_mpvEngine;
+#else
+    return nullptr;
+#endif
+}
+
 void AppController::refreshToolError()
 {
-    // The system backend hands the file to another application, so a missing
-    // ffmpeg/ffplay is not an error there.
-    const bool required = !m_player || m_player->mode() != QLatin1String("system");
+    // The system backend hands the file to another application and the embedded
+    // one decodes in-process, so a missing ffmpeg/ffplay is not an error there.
+    const bool required = !m_player || m_player->requiresExternalTools();
     setError(required && !m_settings->toolsValid() ? m_settings->toolsStatus() : QString());
 }
 
@@ -617,9 +640,9 @@ void AppController::playRow(int row)
     if (!m_player)
         rebuildPlayer();
 
-    // The system backend hands the file to another application, so ffmpeg/ffplay
-    // are not required to start playback.
-    const bool needsTools = !m_player || m_player->mode() != QLatin1String("system");
+    // Only the ffplay backends need the external tools; libmpv decodes
+    // in-process and the system player lives in another application.
+    const bool needsTools = !m_player || m_player->requiresExternalTools();
     if (needsTools && !m_settings->toolsValid()) {
         setError(m_settings->toolsStatus());
         return;
@@ -671,16 +694,29 @@ void AppController::toggleMute()
 
 void AppController::setVideoRect(qreal x, qreal y, qreal width, qreal height)
 {
+    // The pages report on every layout pass; publishing an unchanged rectangle
+    // would restart the transition on the video item each time.
+    const QRectF rect(x, y, width, height);
+    if (rect == m_videoRectDip)
+        return;
+
+    m_videoRectDip = rect;
+    emit videoRectChanged();
+
     if (!m_player)
         return;
 
-    m_videoRectDip = QRectF(x, y, width, height);
     const qreal dpr = m_window ? m_window->devicePixelRatio() : 1.0;
     m_player->setVideoRect(QRectF(x * dpr, y * dpr, width * dpr, height * dpr));
 }
 
 void AppController::setVideoVisible(bool visible)
 {
+    if (visible != m_videoVisible) {
+        m_videoVisible = visible;
+        emit videoVisibleChanged();
+    }
+
     if (m_player)
         m_player->setVideoVisible(visible);
 }

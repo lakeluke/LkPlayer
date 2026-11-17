@@ -50,6 +50,11 @@ void PlayerController::setWindowHandle(quintptr handle)
 
 void PlayerController::open(const QString &filePath, const QString &title)
 {
+    openAt(filePath, title, 0.0);
+}
+
+void PlayerController::openAt(const QString &filePath, const QString &title, double startSeconds)
+{
     if (filePath.isEmpty())
         return;
 
@@ -63,9 +68,14 @@ void PlayerController::open(const QString &filePath, const QString &title)
     emit positionChanged();
     emit durationChanged();
 
+    // The position shown until the backend reports its own keeps the progress
+    // bar from jumping back to zero when a session is resumed.
+    if (startSeconds > 0.0)
+        setPositionInternal(startSeconds);
+
     setState(Loading);
-    qCInfo(lcPlayer) << "opening" << filePath << "in" << mode() << "mode";
-    startPlayback(filePath, 0.0);
+    qCInfo(lcPlayer) << "opening" << filePath << "in" << mode() << "mode at" << startSeconds;
+    startPlayback(filePath, startSeconds);
 }
 
 void PlayerController::togglePlayPause()

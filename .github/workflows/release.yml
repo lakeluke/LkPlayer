@@ -40,6 +40,9 @@ jobs:
             mingw-w64-ucrt-x86_64-qt6-base
             mingw-w64-ucrt-x86_64-qt6-declarative
             mingw-w64-ucrt-x86_64-qt6-svg
+            # libmpv powers the embedded player; the DLL is bundled by the
+            # ldd closure pass below.
+            mingw-w64-ucrt-x86_64-mpv
 
       - name: Configure
         run: cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -128,7 +131,8 @@ jobs:
               qml6-module-qtquick-effects qml6-module-qtqml-workerscript \
               qml6-module-qt-labs-folderlistmodel \
               librsvg2-bin file dpkg-dev binutils patchelf wget \
-              libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 zstd
+              libgl1 libegl1 libxkbcommon-x11-0 libxcb-cursor0 zstd \
+              libmpv-dev
 
             cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_INSTALL_PREFIX=/usr -DLKPLAYER_VERSION="$VERSION"

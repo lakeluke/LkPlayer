@@ -251,7 +251,7 @@ Item {
 
                         Text {
                             width: parent.width
-                            text: "LkPlayer 需要外部 ffmpeg（生成封面）与 ffplay（播放）程序。指向包含这两个可执行文件的目录即可。"
+                            text: "封面由外部 ffmpeg 抽取；内嵌播放由内置的 libmpv 完成，不需要 ffplay。指向包含 ffmpeg / ffplay 的目录即可（仅用内嵌模式时可以不配）。"
                             color: Theme.textSecondary
                             font.pixelSize: Theme.fontCaption
                             wrapMode: Text.WordWrap
@@ -410,8 +410,8 @@ Item {
                                 key: "embedded",
                                 title: "内嵌到界面",
                                 desc: App.embeddedSupported
-                                      ? "把 ffplay 的画面嵌入播放页，界面更统一；缩放窗口时会重新定位。"
-                                      : "当前平台无法把外部窗口嵌入界面，选择后 ffplay 仍会用自己的窗口播放。"
+                                      ? "画面直接渲染在播放页里（libmpv + 硬件解码），与界面同步刷新，不依赖 ffplay。"
+                                      : "当前构建未包含 libmpv，选择后仍会用 ffplay 的独立窗口播放。"
                             },
                             {
                                 key: "system",

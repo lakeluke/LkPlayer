@@ -6,6 +6,8 @@ Item {
     id: page
 
     signal settingsRequested()
+    /** The picture-in-picture window asks for the full player page. */
+    signal playRequested()
 
     property bool sidebarCollapsed: false
 
@@ -230,6 +232,7 @@ Item {
 
             // Custom scrollbar
             Item {
+                id: scrollTrack
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.right: parent.right
@@ -245,6 +248,7 @@ Item {
                 }
 
                 Rectangle {
+                    id: scrollHandleItem
                     width: parent.width
                     radius: 4
                     color: Theme.dark ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(0, 0, 0, 0.18)
@@ -258,6 +262,8 @@ Item {
                     }
 
                     Behavior on y {
+                        // While dragging the handle has to sit under the pointer
+                        // instead of easing behind it.
                         enabled: !scrollHandle.pressed
                         NumberAnimation {
                             duration: 120
@@ -268,6 +274,28 @@ Item {
                         id: scrollHandle
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
+                        /** Where inside the handle the drag started. */
+                        property real grabOffset: 0
+
+                        onPressed: mouse => {
+                            grabOffset = mouse.y;
+                        }
+                        onPositionChanged: mouse => {
+                            if (!pressed)
+                                return;
+
+                            const span = scrollTrack.height - scrollHandleItem.height;
+                            const maxContentY = grid.contentHeight - grid.height;
+                            if (span <= 0 || maxContentY <= 0)
+                                return;
+
+                            // The handle's y follows contentY, so the pointer
+                            // position has to be translated back into a scroll
+                            // offset instead of moving the handle directly.
+                            const wanted = scrollHandleItem.y + mouse.y - grabOffset;
+                            const top = Math.max(0, Math.min(span, wanted));
+                            grid.contentY = maxContentY * (top / span);
+                        }
                     }
                 }
             }
@@ -301,5 +329,16 @@ Item {
                 onActionTriggered: settingsRequested()
             }
         }
+    }
+
+    // Picture-in-picture: the session keeps playing here after leaving the
+    // player page. It draws only its frame and controls; the picture itself is
+    // owned by the window, which is what lets it survive the page switch.
+    MiniPlayer {
+        id: miniPlayer
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.spacingLarge
+        onExpandRequested: page.playRequested()
     }
 }

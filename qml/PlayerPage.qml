@@ -251,5 +251,7 @@ Item {
         }
     }
 
+    // Playback is not tied to this page: the picture lives in Main.qml and keeps
+    // running when the page goes away, continuing in the library's small window.
     Component.onDestruction: App.setVideoVisible(false)
 }

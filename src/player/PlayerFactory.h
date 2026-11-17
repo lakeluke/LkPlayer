@@ -2,18 +2,26 @@
 
 #include <QString>
 
+class MpvEngine;
 class PlayerController;
 class QObject;
 
 /** Creates the playback backend selected in the settings. */
 namespace PlayerFactory {
 
-PlayerController *create(const QString &mode, const QString &ffplayPath, QObject *parent);
+/**
+ * `mpvEngine` is the shared libmpv instance the embedded backend renders with;
+ * it may be null when libmpv is not part of the build.
+ */
+PlayerController *create(const QString &mode,
+                         const QString &ffplayPath,
+                         MpvEngine *mpvEngine,
+                         QObject *parent);
 
 /**
- * True when the platform can host a foreign window inside our own. Embedding
- * needs a windowing system we can manipulate directly (Win32); on Linux ffplay
- * is launched in its own window instead.
+ * True when this build can play video inside the application window. The
+ * embedded backend is libmpv painting into the Qt Quick scene graph, so it is
+ * available on every platform libmpv was found for.
  */
 bool supportsEmbedded();
 

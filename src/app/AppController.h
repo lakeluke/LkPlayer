@@ -20,6 +20,7 @@
 
 class LibraryScanner;
 class MediaItemModel;
+class MpvEngine;
 class ThumbnailCache;
 class QQuickWindow;
 class QTimer;
@@ -62,6 +63,17 @@ class AppController : public QObject
     Q_PROPERTY(QVariantMap currentItem READ currentItem NOTIFY currentItemChanged)
     Q_PROPERTY(QString playbackError READ playbackError NOTIFY playerChanged)
 
+    /**
+     * Where the video picture is drawn right now, in window coordinates.
+     *
+     * The QML page owns a single MpvItem for the whole window instead of one
+     * per page: destroying the item also destroys mpv's render context, which
+     * aborts playback. The item follows this rectangle, so the player page and
+     * the picture-in-picture window only publish where they want it.
+     */
+    Q_PROPERTY(QRectF videoRect READ videoRect NOTIFY videoRectChanged)
+    Q_PROPERTY(bool videoVisible READ videoVisible NOTIFY videoVisibleChanged)
+
     // Platform capabilities / packaging mode, both fixed for a given build.
     Q_PROPERTY(bool embeddedSupported READ embeddedSupported CONSTANT)
     Q_PROPERTY(bool portable READ isPortable CONSTANT)
@@ -99,6 +111,9 @@ public:
 
     QVariantMap currentItem() const { return m_currentItem; }
     QString playbackError() const;
+
+    QRectF videoRect() const { return m_videoRectDip; }
+    bool videoVisible() const { return m_videoVisible; }
 
     /** False where ffplay cannot be hosted inside our own window (Linux). */
     bool embeddedSupported() const;
@@ -163,6 +178,8 @@ public slots:
 
 signals:
     void playerChanged();
+    void videoRectChanged();
+    void videoVisibleChanged();
     void libraryRootChanged();
     void scanningChanged();
     void progressChanged();
@@ -184,6 +201,11 @@ private:
     void wireSettings();
     void startScan();
     void rebuildPlayer();
+    /**
+     * The embedded backend renders through one shared libmpv instance, so it
+     * survives player rebuilds (switching modes) and is created on demand.
+     */
+    MpvEngine *ensureMpvEngine();
     /** Shows the ffmpeg/ffplay error only when the active backend needs them. */
     void refreshToolError();
     /** The active backend, or null when playback is owned by another app. */
@@ -210,10 +232,12 @@ private:
     ThumbnailCache *m_thumbCache = nullptr;
     ThumbnailService *m_thumbService = nullptr;
     PlayerController *m_player = nullptr;
+    MpvEngine *m_mpvEngine = nullptr;
 
     QQuickWindow *m_window = nullptr;
     quintptr m_windowHandle = 0;
     QRectF m_videoRectDip;
+    bool m_videoVisible = false;
 
     /** Drives the cheap background re-check of the library. */
     QTimer *m_verifyTimer = nullptr;

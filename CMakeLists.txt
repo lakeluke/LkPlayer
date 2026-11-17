@@ -58,10 +58,14 @@ set(LK_SOURCES
     src/model/MediaItemModel.h
     src/model/MediaItemModel.cpp
 
-    src/player/EmbeddedPlayer.h
-    src/player/EmbeddedPlayer.cpp
     src/player/FfplayProcess.h
     src/player/FfplayProcess.cpp
+    src/player/MpvEngine.h
+    src/player/MpvEngine.cpp
+    src/player/MpvItem.h
+    src/player/MpvItem.cpp
+    src/player/MpvPlayer.h
+    src/player/MpvPlayer.cpp
     src/player/PlayerController.h
     src/player/PlayerController.cpp
     src/player/PlayerFactory.h
@@ -96,6 +100,7 @@ set(LK_QML_FILES
     qml/MediaCard.qml
     qml/FolderCard.qml
     qml/PlayerControls.qml
+    qml/MiniPlayer.qml
     qml/VideoSurface.qml
     qml/EmptyState.qml
     qml/DetailDrawer.qml
@@ -154,6 +159,28 @@ if(WIN32)
     target_link_libraries(LkPlayer PRIVATE user32 gdi32 dwmapi shell32)
 endif()
 
+# ------------------------------------------------------------------- libmpv
+# The embedded backend paints libmpv's frames straight into the Qt Quick scene
+# graph through its OpenGL render API. libmpv is optional: without it the build
+# still succeeds and embedded mode falls back to ffplay in its own window.
+#
+# Plain find_path/find_library instead of pkg-config on purpose: MSYS2's mpv.pc
+# reports its prefix as "/ucrt64", which a native Windows CMake resolves to the
+# root of the drive and rejects as a non-existent include directory.
+find_path(MPV_INCLUDE_DIR NAMES mpv/client.h)
+find_library(MPV_LIBRARY NAMES mpv libmpv)
+
+if(MPV_INCLUDE_DIR AND MPV_LIBRARY)
+    target_include_directories(LkPlayer PRIVATE ${MPV_INCLUDE_DIR})
+    target_link_libraries(LkPlayer PRIVATE ${MPV_LIBRARY})
+    target_compile_definitions(LkPlayer PRIVATE LKPLAYER_HAVE_MPV)
+    message(STATUS "libmpv found (${MPV_LIBRARY}): in-scene embedded playback enabled")
+else()
+    message(WARNING
+        "libmpv not found: 'embedded' playback will fall back to ffplay in its own window. "
+        "Install the mpv development package (MSYS2: mingw-w64-ucrt-x86_64-mpv, Debian: libmpv-dev).")
+endif()
+
 # --------------------------------------------------------------------- install
 # Linux installs follow the usual prefix layout; the Windows build is shipped as
 # a portable archive assembled in CI, so it only needs the executable.
@@ -186,7 +213,7 @@ if(UNIX AND NOT APPLE)
     set(CPACK_PACKAGE_NAME "lkplayer")
     set(CPACK_PACKAGE_VENDOR "LkPlayer")
     set(CPACK_PACKAGE_CONTACT "LkPlayer <noreply@example.com>")
-    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Local media library player built on Qt Quick and ffplay")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Local media library player built on Qt Quick and libmpv")
     set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
     set(CPACK_DEBIAN_PACKAGE_SECTION "video")
     set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/lakeluke/LkPlayer")

@@ -2,7 +2,7 @@
 
 面向本地媒体库的跨平台桌面播放器（Windows / Linux）。指定一个媒体库根目录，程序递归扫描其中的视频与
 旁挂资源（海报、nfo、字幕、剧照），以卡片网格提供「全库平铺」和「逐层钻取」两种浏览方式，支持按 nfo
-标签过滤，并提供三种播放方式：ffplay 独立窗口、ffplay 画面内嵌到播放页、或直接交给系统注册的播放器。
+标签过滤，并提供三种播放方式：libmpv 画面内嵌到播放页、ffplay 独立窗口、或直接交给系统注册的播放器。
 
 ## 环境依赖
 
@@ -13,9 +13,12 @@
 | C++ | C++17 | |
 | Windows | MinGW-w64 或 clang（MSYS2 UCRT64 已验证） | |
 | Linux | GCC（Debian 13 / Ubuntu 25.04 起提供 Qt 6.5+） | 需 `qt6-base-dev`、`qt6-declarative-dev`、`qt6-svg-dev` |
-| ffmpeg / ffplay | 任意近期版本 | 播放与封面抽帧，路径由用户在设置中指定 |
+| libmpv | 2.x（开发环境 2.5.0） | 内嵌播放。MSYS2 装 `mingw-w64-ucrt-x86_64-mpv`，Debian 装 `libmpv-dev` |
+| ffmpeg / ffplay | 任意近期版本 | 封面抽帧；ffplay 仅「独立窗口」模式使用，路径由用户在设置中指定 |
 
-> 播放完全依赖外部 `ffplay` 进程，未使用 `Qt6Multimedia`（本环境不提供该模块）。
+> 内嵌播放不使用 `Qt6Multimedia`（本环境不提供该模块），而是通过 libmpv 的渲染 API 直接把
+> 画面画进 Qt Quick 场景图。没找到 libmpv 时构建仍然成功，「内嵌到界面」会自动回退为 ffplay
+> 独立窗口。
 
 ## 构建
 
@@ -29,10 +32,16 @@ cmake --build build -j
 Linux：
 
 ```bash
-sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-declarative-dev qt6-svg-dev
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-declarative-dev qt6-svg-dev libmpv-dev
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build
 sudo cmake --install build      # /usr/bin/lkplayer
+```
+
+内嵌播放需要 libmpv 的开发文件，Windows 下单独安装：
+
+```bash
+pacman -S mingw-w64-ucrt-x86_64-mpv
 ```
 
 产物：Windows 为 `build/LkPlayer.exe`（GUI 程序，无控制台），Linux 为 `build/lkplayer`。
@@ -42,12 +51,13 @@ sudo cmake --install build      # /usr/bin/lkplayer
 | 能力 | Windows | Linux |
 | --- | --- | --- |
 | 独立窗口播放 | 支持 | 支持 |
-| 内嵌到播放页 | 支持（Win32 子窗口 + `SDL_WINDOWID`） | 不支持，自动回退为独立窗口 |
+| 内嵌到播放页 | 支持（libmpv → Qt Quick） | 支持（同上，需 `libmpv-dev`） |
 | 系统播放器 | `QDesktopServices` → 关联程序 | `QDesktopServices` → `xdg-open` |
 | 便携模式 | 支持（见下） | 支持（需自行放置 `portable.txt`） |
 
-嵌入外部窗口需要能直接操纵窗口系统的 API，Linux 下只有 Win32 等价实现存在，因此该模式在设置中
-会置灰并说明原因；其余功能完全一致。
+内嵌播放不再依赖操作系统的窗口重定向：libmpv 在进程内解码，通过渲染 API 把画面作为纹理交给
+Qt Quick 的场景图，因此视频和界面共用同一个窗口与垂直同步。只有构建时找不到 libmpv，该模式才会
+在设置中置灰并回退为 ffplay 独立窗口。
 
 ## 运行与首次配置
 
@@ -55,9 +65,11 @@ sudo cmake --install build      # /usr/bin/lkplayer
 2. 打开右上角「设置」：
    - **媒体库目录**：选择媒体库根目录，保存后自动重新扫描。
    - **程序目录**：指向包含 `ffmpeg.exe` / `ffplay.exe` 的目录，界面会实时校验并显示可用状态。
+     封面抽帧需要 `ffmpeg`；只用内嵌播放时可以留空。
    - **播放模式**：
-     - `独立窗口`：ffplay 打开自己的窗口（默认，最稳定）。
-     - `内嵌到界面`：把 ffplay 的画面嵌入播放页。
+     - `内嵌到界面`：libmpv 把画面直接渲染进播放页，硬件解码、与界面同步刷新，不需要 ffplay；
+       进度、音量与暂停通过 libmpv 的 API 完成，可以精确定位到任意位置。
+     - `独立窗口`：ffplay 打开自己的窗口，需要配置程序目录。
      - `系统播放器`：调用 Windows 注册的视频播放器打开，不需要 ffmpeg / ffplay；
        此时播放、进度与音量由该播放器接管，LkPlayer 的控制条会置灰。
 3. 回到媒体库，点击任意卡片开始播放。播放页右上角与底部控制条的胶囊按钮可在三种模式间循环切换。
@@ -124,7 +136,7 @@ Root/
 | `M` | 静音切换 |
 | `Esc` | 返回媒体库 |
 
-> 快捷键与底部控制条只对 ffplay 后端生效；使用「系统播放器」时由该播放器自己处理。
+> 快捷键与底部控制条对 libmpv 与 ffplay 后端生效；使用「系统播放器」时由该播放器自己处理。
 
 ## 测试
 
@@ -151,7 +163,8 @@ git push origin v0.1.0
 | `LkPlayer-<version>-x86_64.AppImage` | 通用 Linux | 内置 Qt 运行时与 QML 模块 |
 
 也可在 Actions 页面用 `Run workflow` 手动触发（此时只上传构建产物，不创建 Release）。
-Windows 便携包与 AppImage 都不含 ffmpeg / ffplay，仍需按「运行与首次配置」自行设置工具目录。
+Windows 便携包与 AppImage 都自带 libmpv（`libmpv-2.dll` / `libmpv.so.2`），内嵌播放开箱可用；
+两者仍不含 ffmpeg / ffplay，需要封面抽帧或「独立窗口」模式时按「运行与首次配置」自行设置工具目录。
 
 Linux 构建跑在 `debian:trixie` 容器内：它是带 Qt 6.5+ 的最旧发行版（Qt 6.8.2），
 `.deb` 因此能直接复用发行版 Qt 而不必捆绑运行时。

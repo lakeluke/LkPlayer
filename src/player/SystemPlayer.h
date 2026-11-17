@@ -20,6 +20,8 @@ public:
 
     QString mode() const override { return QStringLiteral("system"); }
     bool isControllable() const override { return false; }
+    /** The foreign application owns decoding, so no local tools are needed. */
+    bool requiresExternalTools() const override { return false; }
 
 protected:
     void startPlayback(const QString &filePath, double startSeconds) override;

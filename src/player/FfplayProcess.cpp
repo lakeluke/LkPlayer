@@ -97,28 +97,17 @@ int volumeKeyPresses(int fromPercent, int toPercent)
 
 namespace NativeWindow {
 
-quintptr findProcessWindow(qint64 pid, quintptr hostHint)
+quintptr findProcessWindow(qint64 pid)
 {
 #ifdef Q_OS_WIN
     if (pid == 0)
         return 0;
-
-    // A window that SDL created inside our own host is unambiguous, so the size
-    // filter is relaxed: the child is legitimately tiny until the QML layout has
-    // reported a real surface rectangle.
-    if (hostHint != 0) {
-        WindowSearch childSearch{ static_cast<DWORD>(pid), nullptr, 1 };
-        EnumChildWindows(reinterpret_cast<HWND>(hostHint), enumProcessWindow, reinterpret_cast<LPARAM>(&childSearch));
-        if (childSearch.result)
-            return reinterpret_cast<quintptr>(childSearch.result);
-    }
 
     WindowSearch search{ static_cast<DWORD>(pid), nullptr, 17 };
     EnumWindows(enumProcessWindow, reinterpret_cast<LPARAM>(&search));
     return reinterpret_cast<quintptr>(search.result);
 #else
     Q_UNUSED(pid);
-    Q_UNUSED(hostHint);
     return 0;
 #endif
 }
@@ -142,112 +131,6 @@ bool sendKey(quintptr handle, int virtualKey)
     Q_UNUSED(handle);
     Q_UNUSED(virtualKey);
     return false;
-#endif
-}
-
-quintptr createChildHost(quintptr parent, int x, int y, int width, int height)
-{
-#ifdef Q_OS_WIN
-    static const wchar_t *kClassName = L"LkPlayerVideoHost";
-    static bool registered = false;
-
-    HINSTANCE instance = GetModuleHandleW(nullptr);
-    if (!registered) {
-        WNDCLASSEXW wc{};
-        wc.cbSize = sizeof(wc);
-        wc.lpfnWndProc = DefWindowProcW;
-        wc.hInstance = instance;
-        wc.lpszClassName = kClassName;
-        wc.hbrBackground = nullptr;
-        wc.style = CS_HREDRAW | CS_VREDRAW;
-        RegisterClassExW(&wc);
-        registered = true;
-    }
-
-    HWND host = CreateWindowExW(0,
-                                kClassName,
-                                L"",
-                                WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-                                x,
-                                y,
-                                qMax(1, width),
-                                qMax(1, height),
-                                reinterpret_cast<HWND>(parent),
-                                nullptr,
-                                instance,
-                                nullptr);
-    return reinterpret_cast<quintptr>(host);
-#else
-    Q_UNUSED(parent);
-    Q_UNUSED(x);
-    Q_UNUSED(y);
-    Q_UNUSED(width);
-    Q_UNUSED(height);
-    return 0;
-#endif
-}
-
-void setChildGeometry(quintptr child, int x, int y, int width, int height)
-{
-#ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(child);
-    if (!hwnd || !IsWindow(hwnd))
-        return;
-    SetWindowPos(hwnd,
-                 nullptr,
-                 x,
-                 y,
-                 qMax(1, width),
-                 qMax(1, height),
-                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
-#else
-    Q_UNUSED(child);
-    Q_UNUSED(x);
-    Q_UNUSED(y);
-    Q_UNUSED(width);
-    Q_UNUSED(height);
-#endif
-}
-
-void setChildVisible(quintptr child, bool visible)
-{
-#ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(child);
-    if (!hwnd || !IsWindow(hwnd))
-        return;
-    ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
-#else
-    Q_UNUSED(child);
-    Q_UNUSED(visible);
-#endif
-}
-
-void attachToHost(quintptr child, quintptr host)
-{
-#ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(child);
-    HWND parent = reinterpret_cast<HWND>(host);
-    if (!hwnd || !IsWindow(hwnd) || !parent || !IsWindow(parent))
-        return;
-
-    SetWindowLongPtrW(hwnd, GWL_STYLE, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS);
-    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, 0);
-    SetParent(hwnd, parent);
-    ShowWindow(hwnd, SW_SHOWNA);
-#else
-    Q_UNUSED(child);
-    Q_UNUSED(host);
-#endif
-}
-
-void destroyWindow(quintptr handle)
-{
-#ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(handle);
-    if (hwnd && IsWindow(hwnd))
-        DestroyWindow(hwnd);
-#else
-    Q_UNUSED(handle);
 #endif
 }
 
@@ -278,11 +161,6 @@ void FfplayProcess::setProgram(const QString &program)
 void FfplayProcess::setSeekInterval(double seconds)
 {
     m_seekInterval = seconds > 0.0 ? seconds : 10.0;
-}
-
-void FfplayProcess::setWindowHostHint(quintptr host)
-{
-    m_windowHostHint = host;
 }
 
 bool FfplayProcess::isRunning() const
@@ -488,7 +366,7 @@ void FfplayProcess::pollForWindow()
     }
 
     if (m_window == 0) {
-        const quintptr found = NativeWindow::findProcessWindow(m_pid, m_windowHostHint);
+        const quintptr found = NativeWindow::findProcessWindow(m_pid);
         if (found != 0) {
             m_window = found;
             m_windowTimer->stop();

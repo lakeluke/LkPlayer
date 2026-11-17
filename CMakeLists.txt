@@ -46,6 +46,8 @@ set(LK_SOURCES
     src/core/NfoParser.cpp
     src/core/PathUtils.h
     src/core/PathUtils.cpp
+    src/core/LibraryIndex.h
+    src/core/LibraryIndex.cpp
     src/core/LibraryScanner.h
     src/core/LibraryScanner.cpp
 

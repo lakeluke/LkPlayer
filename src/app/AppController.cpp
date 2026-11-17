@@ -1,10 +1,12 @@
 #include "app/AppController.h"
 
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QQuickWindow>
+#include <QTimer>
 #include <QUrl>
 
 #include "app/AppPaths.h"
@@ -49,12 +51,24 @@ AppController::AppController(QObject *parent)
 
     m_scanner = new LibraryScanner(this);
     connect(m_scanner, &LibraryScanner::scanStarted, this, [this]() {
+        // Background checks are invisible: they must not flip the scanning
+        // indicator or overwrite the status line.
+        if (m_scanner->isBackground())
+            return;
         m_scanning = true;
         emit scanningChanged();
         setError(QString());
         setStatus(QStringLiteral("正在扫描媒体库…"));
     });
     connect(m_scanner, &LibraryScanner::itemsReady, this, &AppController::onItemsReady);
+    connect(m_scanner, &LibraryScanner::folderItemsChanged, this, &AppController::onFolderItemsChanged);
+    connect(m_scanner, &LibraryScanner::indexLoaded, this, [this](int videos, int folders) {
+        if (videos <= 0)
+            return;
+        setStatus(QStringLiteral("已载入上次扫描结果：%1 个视频 / %2 个文件夹，正在校验目录…")
+                      .arg(videos)
+                      .arg(folders));
+    });
     connect(m_scanner, &LibraryScanner::structureReady, this, &AppController::onStructureReady);
     connect(m_scanner, &LibraryScanner::progressChanged, this, [this](int files, int videos, const QString &) {
         m_scannedFiles = files;
@@ -89,6 +103,13 @@ AppController::AppController(QObject *parent)
 
     m_thumbService->setFfmpegPath(m_settings->ffmpegPath());
     m_thumbCache->prune();
+
+    // Periodic, very cheap re-check: only directory timestamps are compared, so
+    // adding a file behind the app's back shows up without a full rescan.
+    m_verifyTimer = new QTimer(this);
+    m_verifyTimer->setInterval(3 * 60 * 1000);
+    connect(m_verifyTimer, &QTimer::timeout, this, &AppController::verifyLibrary);
+    m_verifyTimer->start();
 
     refreshToolError();
 
@@ -193,6 +214,13 @@ void AppController::attachWindow(QObject *window)
     qCInfo(lcApp) << "attached to window, native handle" << m_windowHandle;
     if (m_player)
         m_player->setWindowHandle(m_windowHandle);
+
+    // Coming back to the app is a good moment to check whether the library
+    // changed while it was in the background.
+    connect(quickWindow, &QQuickWindow::activeChanged, this, [this]() {
+        if (m_window && m_window->isActive())
+            verifyLibrary();
+    });
 }
 
 void AppController::setLibraryRoot(const QString &path)
@@ -225,24 +253,50 @@ void AppController::rescan()
     startScan();
 }
 
+void AppController::rescanFull()
+{
+    const QString root = m_settings->libraryRoot();
+    if (root.isEmpty() || !QFileInfo(root).isDir()) {
+        rescan();
+        return;
+    }
+
+    // A background check may be running right now: stop it and come back once
+    // the scanner is free again, otherwise the request would be dropped.
+    if (m_scanner->isRunning()) {
+        m_restartScan = true;
+        m_restartFull = true;
+        m_scanner->cancel();
+        return;
+    }
+
+    // Re-read everything: the only way to notice a file whose content (and
+    // therefore sidecar metadata) changed without touching the folder mtime.
+    resetLibraryView();
+
+    m_childFolders->setRootPath(root);
+    m_scanner->setRootPath(root);
+    m_scanner->setIndexFile(AppPaths::scanIndexFile(root));
+    m_scanner->startWithMode(LibraryScanner::Mode::Full);
+}
+
 void AppController::startScan()
 {
     const QString root = m_settings->libraryRoot();
 
-    m_itemModel->clear();
-    m_folderNodes.clear();
-    m_folderCoverHints.clear();
-    m_childFolders->setFolders(FolderNodeList());
-    m_childFolders->setCoverHints(QHash<QString, QString>());
+    // Ask a running scan (usually the background check) to stop and queue this
+    // request; dropping it would leave the view empty until the next attempt.
+    if (m_scanner->isRunning()) {
+        m_restartScan = true;
+        m_restartFull = false;
+        m_scanner->cancel();
+        return;
+    }
+
     m_currentFolder.clear();
     m_mediaModel->setSelectedTags(QStringList());
     m_mediaModel->setSearchText(QString());
-    m_scannedFiles = 0;
-    m_scannedVideos = 0;
-    emit progressChanged();
-    emit folderCountChanged();
-    emit currentFolderChanged();
-    rebuildBreadcrumb();
+    resetLibraryView();
 
     if (root.isEmpty() || !QFileInfo(root).isDir()) {
         if (!root.isEmpty())
@@ -253,7 +307,23 @@ void AppController::startScan()
 
     m_childFolders->setRootPath(root);
     m_scanner->setRootPath(root);
+    m_scanner->setIndexFile(AppPaths::scanIndexFile(root));
     m_scanner->start();
+}
+
+void AppController::resetLibraryView()
+{
+    m_itemModel->clear();
+    m_folderNodes.clear();
+    m_folderCoverHints.clear();
+    m_childFolders->setFolders(FolderNodeList());
+    m_childFolders->setCoverHints(QHash<QString, QString>());
+    m_scannedFiles = 0;
+    m_scannedVideos = 0;
+    emit progressChanged();
+    emit folderCountChanged();
+    emit currentFolderChanged();
+    rebuildBreadcrumb();
 }
 
 void AppController::onItemsReady(const MediaItemList &items)
@@ -269,6 +339,18 @@ void AppController::onItemsReady(const MediaItemList &items)
         m_childFolders->setCoverHints(m_folderCoverHints);
 }
 
+void AppController::onFolderItemsChanged(const QString &folderPath, const MediaItemList &items)
+{
+    m_itemModel->replaceFolder(folderPath, items);
+
+    if (items.isEmpty()) {
+        m_folderCoverHints.remove(folderPath);
+    } else if (!m_folderCoverHints.contains(folderPath)) {
+        m_folderCoverHints.insert(folderPath, coverUrlFor(items.first()));
+    }
+    m_childFolders->setCoverHints(m_folderCoverHints);
+}
+
 void AppController::onStructureReady(const FolderNodeList &folders)
 {
     m_folderNodes.clear();
@@ -279,10 +361,13 @@ void AppController::onStructureReady(const FolderNodeList &folders)
     m_childFolders->setFolders(folders);
     m_childFolders->setRootPath(m_settings->libraryRoot());
 
-    // Restore the folder the user was browsing before, if it still exists.
-    const QString wanted = m_settings->lastFolder();
-    if (m_viewMode == QLatin1String("drill") && !wanted.isEmpty() && m_folderNodes.contains(QDir::cleanPath(wanted)))
-        m_currentFolder = QDir::cleanPath(wanted);
+    // The structure is published twice (cached snapshot, then the verified
+    // result), so the folder the user is browsing has to survive both.
+    QString wanted = m_currentFolder;
+    if (wanted.isEmpty())
+        wanted = QDir::cleanPath(m_settings->lastFolder());
+    if (m_viewMode == QLatin1String("drill") && !wanted.isEmpty() && m_folderNodes.contains(wanted))
+        m_currentFolder = wanted;
     else
         m_currentFolder = QDir(QDir::cleanPath(m_settings->libraryRoot())).absolutePath();
 
@@ -292,6 +377,26 @@ void AppController::onStructureReady(const FolderNodeList &folders)
 
 void AppController::onScanFinished(int totalVideos, bool cancelled)
 {
+    // Whatever just ran, the library is current: give the activation triggered
+    // check a moment of rest.
+    m_lastVerifyMs = QDateTime::currentMSecsSinceEpoch();
+
+    if (m_restartScan) {
+        m_restartScan = false;
+        const bool full = m_restartFull;
+        m_restartFull = false;
+        if (full)
+            rescanFull();
+        else
+            startScan();
+        return;
+    }
+
+    if (m_scanner->isBackground()) {
+        qCInfo(lcApp) << "background check finished, videos:" << totalVideos;
+        return;
+    }
+
     m_scanning = false;
     emit scanningChanged();
 
@@ -303,6 +408,26 @@ void AppController::onScanFinished(int totalVideos, bool cancelled)
                       .arg(m_folderNodes.size()));
     }
     qCInfo(lcApp) << "scan finished, videos:" << totalVideos << "folders:" << m_folderNodes.size();
+}
+
+void AppController::verifyLibrary()
+{
+    if (!m_scanner || m_scanner->isRunning())
+        return;
+    if (m_settings->libraryRoot().isEmpty())
+        return;
+    // The check stats every folder, so only run it while the user is actually
+    // looking at the app instead of keeping a spinning disk busy in the
+    // background.
+    if (m_window && !m_window->isActive())
+        return;
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_lastVerifyMs < 30000)
+        return;
+    m_lastVerifyMs = now;
+
+    m_scanner->startWithMode(LibraryScanner::Mode::Verify);
 }
 
 void AppController::openFolder(const QString &folderPath)

@@ -52,6 +52,12 @@ public:
     void clear();
     void addItems(const MediaItemList &items);
 
+    /**
+     * Drops every row stored in `folderPath` and appends `items` instead. Used
+     * by the incremental scan, which re-reads single folders after they changed.
+     */
+    void replaceFolder(const QString &folderPath, const MediaItemList &items);
+
     const MediaItem *itemAt(int row) const;
     int indexOfPath(const QString &filePath) const;
 

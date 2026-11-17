@@ -1,5 +1,8 @@
 #include "player/FfplayProcess.h"
 
+#include <cctype>
+#include <cmath>
+
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QProcess>
@@ -50,15 +53,41 @@ BOOL CALLBACK enumProcessWindow(HWND hwnd, LPARAM lParam)
     return FALSE;
 }
 
+#endif // Q_OS_WIN
+
+/**
+ * ffplay expects virtual-key codes; for the ASCII shortcuts it understands
+ * those are the upper case letter / digit themselves (0x20 for the space bar).
+ */
 int virtualKeyForChar(char key)
 {
     if (key == ' ')
-        return VK_SPACE;
-    const char upper = static_cast<char>(::toupper(static_cast<unsigned char>(key)));
-    return upper;
+        return 0x20; // VK_SPACE
+    return static_cast<int>(::toupper(static_cast<unsigned char>(key)));
 }
 
-#endif // Q_OS_WIN
+/** Gain step ffplay applies to the volume mixer on every 9/0 key press. */
+constexpr double kFfplayVolumeStepDb = 0.75;
+
+double volumeLevelDb(int percent)
+{
+    // Silence is treated as -60 dB: inaudible, but finite so that the number of
+    // key presses stays bounded.
+    return percent <= 0 ? -60.0 : 20.0 * std::log10(percent / 100.0);
+}
+
+/**
+ * ffplay steps the volume by a fixed gain, not by a fixed amount of the mixer
+ * scale, so reaching a target takes as many presses as the *ratio* between the
+ * two levels needs (100% -> 40% is about 11 presses, not 77).
+ */
+int volumeKeyPresses(int fromPercent, int toPercent)
+{
+    if (fromPercent == toPercent)
+        return 0;
+    const double delta = volumeLevelDb(toPercent) - volumeLevelDb(fromPercent);
+    return qBound(1, qRound(qAbs(delta) / kFfplayVolumeStepDb), 100);
+}
 
 } // namespace
 
@@ -266,6 +295,18 @@ void FfplayProcess::resetWindowTracking()
     m_window = 0;
     m_pid = 0;
     m_windowPolls = 0;
+    m_pendingKeys.clear();
+}
+
+void FfplayProcess::flushPendingShortcuts()
+{
+    if (m_window == 0 || m_pendingKeys.isEmpty())
+        return;
+
+    const QByteArray pending = m_pendingKeys;
+    m_pendingKeys.clear();
+    for (char key : pending)
+        NativeWindow::sendKey(m_window, virtualKeyForChar(key));
 }
 
 void FfplayProcess::start(const QString &filePath,
@@ -278,8 +319,9 @@ void FfplayProcess::start(const QString &filePath,
 
     m_stderrBuffer.clear();
     m_filePath = filePath;
-    m_volume = 100;
-    m_muted = false;
+    m_pendingKeys.clear();
+    // m_volume / m_muted are the state the UI shows; a restart (large seek)
+    // must not reset the mixer behind the user's back.
 
     if (m_program.isEmpty() || !QFileInfo::exists(m_program)) {
         emit failed(tr("未找到 ffplay 可执行文件，请在设置中指定程序目录"));
@@ -305,6 +347,10 @@ void FfplayProcess::start(const QString &filePath,
     connect(m_process, &QProcess::started, this, [this]() {
         m_pid = m_process ? m_process->processId() : 0;
         m_windowPolls = 0;
+        // ffplay always comes up unmuted; restore what the UI is showing.
+        if (m_muted)
+            sendShortcut('m');
+        emit started();
     });
     connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart)
@@ -344,6 +390,12 @@ void FfplayProcess::stop()
         return;
     }
 
+    // This teardown is deliberate (restart for a large seek, switching files,
+    // stop button): no `failed`/`finished` may escape from here, otherwise the
+    // player treats it as "playback ended", destroys the embedded host window
+    // and drops back to Stopped while a new ffplay is already starting.
+    m_process->disconnect(this);
+
     if (m_process->state() != QProcess::NotRunning) {
         m_process->write("q");
         m_process->waitForBytesWritten(80);
@@ -359,7 +411,6 @@ void FfplayProcess::stop()
         }
     }
 
-    m_process->disconnect(this);
     m_process->deleteLater();
     m_process = nullptr;
     resetWindowTracking();
@@ -367,17 +418,17 @@ void FfplayProcess::stop()
 
 void FfplayProcess::sendShortcut(char key)
 {
-    if (m_process && m_process->state() == QProcess::Running) {
-        m_process->write(QByteArray(1, key));
-        m_process->waitForBytesWritten(20);
+    // ffplay takes its input from SDL, i.e. from window messages: writing to
+    // stdin does nothing. The window handle is discovered asynchronously a
+    // moment after the process starts, so shortcuts requested in that window
+    // have to be queued instead of being dropped.
+    if (m_window == 0) {
+        if (m_pendingKeys.size() < 512)
+            m_pendingKeys.append(key);
+        return;
     }
 
-    if (m_window) {
-        int vk = key;
-        if (key == ' ')
-            vk = 0x20; // VK_SPACE
-        NativeWindow::sendKey(m_window, vk);
-    }
+    NativeWindow::sendKey(m_window, virtualKeyForChar(key));
 }
 
 void FfplayProcess::requestVolume(int target)
@@ -388,15 +439,13 @@ void FfplayProcess::requestVolume(int target)
         return;
     }
 
-    // ffplay mixes on a 0..128 scale that '0'/'9' step by one.
-    const int currentSteps = qRound(m_volume * 128.0 / 100.0);
-    const int targetSteps = qRound(target * 128.0 / 100.0);
-    const int steps = qAbs(targetSteps - currentSteps);
-    const char key = targetSteps < currentSteps ? '0' : '9';
-    for (int i = 0; i < steps; ++i)
-        sendShortcut(key);
-
+    const int presses = volumeKeyPresses(m_volume, target);
+    // ffplay's own key help: "9, 0 - decrease and increase volume respectively".
+    const char key = target < m_volume ? '9' : '0';
     m_volume = target;
+
+    for (int i = 0; i < presses; ++i)
+        sendShortcut(key);
 }
 
 void FfplayProcess::requestMute(bool muted)
@@ -445,6 +494,7 @@ void FfplayProcess::pollForWindow()
             m_windowTimer->stop();
             qCInfo(lcFfplay) << "ffplay window found";
             emit windowFound(found);
+            flushPendingShortcuts();
             return;
         }
     }
@@ -462,7 +512,11 @@ void FfplayProcess::handleStandardError()
 
     static const QRegularExpression durationRe(
         QStringLiteral("Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)"));
-    static const QRegularExpression positionRe(QStringLiteral("([0-9]+\\.[0-9]+)\\s+M-[AV]:"));
+    // ffplay's status line starts with the master clock in seconds, followed by
+    // "A-V:" (audio + video), "M-A:" / "M-V:" (one stream) or "nan" while the
+    // clocks settle. Only the numeric variant carries a usable position.
+    static const QRegularExpression positionRe(
+        QStringLiteral("([0-9]+\\.[0-9]+)\\s+(?:A-V|M-[AV]):"));
 
     int start = 0;
     for (int i = 0; i < m_stderrBuffer.size(); ++i) {

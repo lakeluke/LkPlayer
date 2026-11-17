@@ -18,6 +18,19 @@ constexpr qint64 kBatchIntervalMs = 150;
 constexpr qint64 kProgressIntervalMs = 120;
 constexpr int kMaxDepth = 24;
 
+QString modeName(LibraryScanner::Mode mode)
+{
+    switch (mode) {
+    case LibraryScanner::Mode::Snapshot:
+        return QStringLiteral("snapshot");
+    case LibraryScanner::Mode::Verify:
+        return QStringLiteral("verify");
+    case LibraryScanner::Mode::Full:
+        return QStringLiteral("full");
+    }
+    return QStringLiteral("snapshot");
+}
+
 QStringList normalizedTags(const QStringList &input)
 {
     QStringList result;
@@ -58,6 +71,16 @@ QString resolveNfoImage(const QString &folderPath, const QString &reference)
     return QString();
 }
 
+/**
+ * A directory's own timestamp. It changes whenever a child entry is created,
+ * removed or renamed, which is exactly the granularity the incremental scan
+ * needs; editing a file's content leaves it untouched.
+ */
+qint64 directoryModifiedMs(const QString &dirPath)
+{
+    return QFileInfo(dirPath).lastModified().toMSecsSinceEpoch();
+}
+
 } // namespace
 
 LibraryScanner::LibraryScanner(QObject *parent)
@@ -94,6 +117,11 @@ void LibraryScanner::setRootPath(const QString &path)
 
 void LibraryScanner::start()
 {
+    startWithMode(Mode::Snapshot);
+}
+
+void LibraryScanner::startWithMode(Mode mode)
+{
     if (m_running) {
         qCInfo(lcScan) << "scan already running, request ignored";
         return;
@@ -111,8 +139,8 @@ void LibraryScanner::start()
     }
 
     m_rootAbsolute = rootInfo.absoluteFilePath();
+    m_mode = mode;
     m_cancelFlag.storeRelaxed(0);
-    m_runningFlag.storeRelaxed(1);
     m_scannedFiles = 0;
     m_videoCount = 0;
     m_lastEmitMs = QDateTime::currentMSecsSinceEpoch();
@@ -123,7 +151,7 @@ void LibraryScanner::start()
     emit runningChanged(true);
     emit scanStarted();
 
-    qCInfo(lcScan) << "scan started:" << m_rootAbsolute;
+    qCInfo(lcScan) << "scan started (" << modeName(mode) << "):" << m_rootAbsolute;
     m_future = QtConcurrent::run([this]() { runScan(); });
     m_watcher.setFuture(m_future);
 }
@@ -136,10 +164,23 @@ void LibraryScanner::cancel()
     m_cancelFlag.storeRelaxed(1);
 }
 
+FolderNodeList LibraryScanner::folderList() const
+{
+    FolderNodeList list;
+    list.reserve(m_folders.size());
+    for (auto it = m_folders.cbegin(); it != m_folders.constEnd(); ++it)
+        list.append(it.value());
+    return list;
+}
+
 void LibraryScanner::runScan()
 {
     m_pendingItems.clear();
     m_folders.clear();
+    m_index.clear();
+    m_haveIndex = false;
+    m_deltaMode = false;
+    m_indexDirty = false;
     m_scannedFiles = 0;
     m_videoCount = 0;
 
@@ -152,18 +193,74 @@ void LibraryScanner::runScan()
         m_folders.insert(node.path, node);
     }
 
+    if (m_mode != Mode::Full && !m_indexFile.isEmpty())
+        m_haveIndex = LibraryIndex::load(m_indexFile, m_rootAbsolute, &m_index);
+    // Without a cache the model starts empty, so full batches have to be sent.
+    m_deltaMode = m_haveIndex && m_mode != Mode::Full;
+
+    // Publish the previous result immediately: the grid is usable within
+    // milliseconds even when the verification below has to touch the disk.
+    if (m_haveIndex && m_mode == Mode::Snapshot) {
+        int videos = 0;
+        MediaItemList batch;
+        batch.reserve(kBatchSize);
+        for (const LibraryFolderSnapshot &folder : m_index.folders()) {
+            for (const MediaItem &item : folder.items) {
+                batch.append(item);
+                ++videos;
+                if (batch.size() >= kBatchSize) {
+                    emit itemsReady(batch);
+                    batch.clear();
+                }
+            }
+        }
+        if (!batch.isEmpty())
+            emit itemsReady(batch);
+
+        FolderNodeList cached;
+        cached.reserve(m_index.folderCount());
+        for (auto it = m_index.folders().cbegin(); it != m_index.folders().cend(); ++it)
+            cached.append(it.value().node);
+        emit structureReady(cached);
+        emit indexLoaded(videos, m_index.folderCount());
+        emit progressChanged(videos, videos, m_rootAbsolute);
+        qCInfo(lcScan) << "published cached index:" << videos << "videos," << cached.size() << "folders";
+    }
+
     scanDirectory(m_rootAbsolute, 0);
     flushItems(true);
 
-    FolderNodeList list;
-    list.reserve(m_folders.size());
-    for (auto it = m_folders.cbegin(); it != m_folders.constEnd(); ++it)
-        list.append(it.value());
+    // Folders that vanished from the disk disappear from both the index and the
+    // model, so a deleted directory never leaves orphaned cards behind.
+    QStringList stale;
+    if (m_haveIndex) {
+        for (auto it = m_index.folders().cbegin(); it != m_index.folders().cend(); ++it) {
+            if (!m_folders.contains(it.key()))
+                stale.append(it.key());
+        }
+        for (const QString &path : stale) {
+            emit folderItemsChanged(path, MediaItemList());
+            m_index.remove(path);
+            m_indexDirty = true;
+        }
+    }
 
-    emit structureReady(list);
+    const FolderNodeList list = folderList();
+    // A background check that found nothing must stay invisible: replacing the
+    // folder tree would make the sidebar flicker every few minutes.
+    if (m_mode != Mode::Verify || m_indexDirty || !stale.isEmpty())
+        emit structureReady(list);
     emit progressChanged(m_scannedFiles, m_videoCount, m_rootAbsolute);
-    qCInfo(lcScan) << "scan finished:" << m_videoCount << "videos," << m_scannedFiles << "files," << list.size()
-                   << "folders";
+
+    const bool cancelled = m_cancelFlag.loadRelaxed() != 0;
+    qCInfo(lcScan) << "scan finished (" << modeName(m_mode) << "):" << m_videoCount << "videos,"
+                   << m_scannedFiles << "files," << list.size() << "folders";
+
+    if (!cancelled && m_indexDirty && !m_indexFile.isEmpty()) {
+        m_index.setRootPath(m_rootAbsolute);
+        if (m_index.save(m_indexFile))
+            qCInfo(lcScan) << "index saved with" << m_index.folderCount() << "folders";
+    }
 }
 
 void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
@@ -171,14 +268,38 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
     if (m_cancelFlag.loadRelaxed() || depth > kMaxDepth)
         return;
 
+    const QDir dir(dirPath);
+    const QString absPath = dir.absolutePath();
+    const QString folderName = dir.dirName();
+    const qint64 modifiedMs = directoryModifiedMs(dirPath);
+
+    // --- unchanged directory: reuse the snapshot, only touch its children ---
+    if (m_deltaMode) {
+        const LibraryFolderSnapshot *cached = m_index.find(absPath);
+        if (cached && cached->node.depth == depth && cached->modifiedMs == modifiedMs) {
+            FolderNode node = cached->node;
+            // `tagCounts` in the node are the recursive totals; rollUpFolder()
+            // re-merges them from the direct counts.
+            node.tagCounts = cached->directTagCounts;
+            m_folders.insert(absPath, node);
+            m_videoCount += cached->items.size();
+
+            const QStringList children = cached->node.childPaths;
+            for (const QString &child : children) {
+                if (m_cancelFlag.loadRelaxed())
+                    break;
+                scanDirectory(child, depth + 1);
+            }
+
+            rollUpFolder(absPath);
+            return;
+        }
+    }
+
     PathUtils::DirIndex index;
     index.build(dirPath);
     if (!index.isValid())
         return;
-
-    const QDir dir(dirPath);
-    const QString absPath = dir.absolutePath();
-    const QString folderName = dir.dirName();
 
     QStringList childDirs;
     childDirs.reserve(index.subDirs().size());
@@ -193,6 +314,7 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
 
     QVector<MediaItem> ownItems;
     ownItems.reserve(8);
+    QHash<QString, int> localTagCounts;
 
     for (const QString &fileName : index.files()) {
         if (m_cancelFlag.loadRelaxed())
@@ -252,32 +374,41 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
         else
             item.tags = normalizedTags(item.tags);
 
+        for (const QString &tag : item.tags)
+            localTagCounts[tag] += 1;
+
         ownItems.append(item);
         ++m_videoCount;
     }
 
     // Commit the folder node (never keep a reference across hash mutations).
     {
-        FolderNode &node = m_folders[absPath];
+        FolderNode node = m_folders.value(absPath);
         node.path = absPath;
         node.name = folderName.isEmpty() ? absPath : folderName;
         node.depth = depth;
         node.childPaths = childDirs;
         node.directVideoCount = ownItems.size();
         node.posterPath = folderPoster;
-
-        if (!ownItems.isEmpty()) {
-            QHash<QString, int> localCounts;
-            for (const MediaItem &item : ownItems) {
-                for (const QString &tag : item.tags)
-                    localCounts[tag] += 1;
-            }
-            node.tagCounts = localCounts;
-        }
+        node.tagCounts = localTagCounts;
+        m_folders.insert(absPath, node);
     }
 
-    m_pendingItems += ownItems;
-    flushItems(false);
+    LibraryFolderSnapshot snapshot;
+    snapshot.node = m_folders.value(absPath);
+    snapshot.directTagCounts = localTagCounts;
+    snapshot.modifiedMs = modifiedMs;
+    snapshot.items = ownItems;
+    m_index.insert(snapshot);
+    m_indexDirty = true;
+
+    if (m_deltaMode) {
+        // The model may still hold the previous version of this folder.
+        emit folderItemsChanged(absPath, ownItems);
+    } else {
+        m_pendingItems += ownItems;
+        flushItems(false);
+    }
     emitProgress(false);
 
     for (const QString &child : childDirs) {
@@ -286,19 +417,25 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
         scanDirectory(child, depth + 1);
     }
 
-    // Roll the video counts up now that every descendant has been visited.
-    int total = m_folders.value(absPath).directVideoCount;
-    QHash<QString, int> mergedTags = m_folders.value(absPath).tagCounts;
-    for (const QString &child : childDirs) {
+    rollUpFolder(absPath);
+}
+
+void LibraryScanner::rollUpFolder(const QString &absPath)
+{
+    const FolderNode node = m_folders.value(absPath);
+
+    int total = node.directVideoCount;
+    QHash<QString, int> mergedTags = node.tagCounts;
+    for (const QString &child : node.childPaths) {
         const FolderNode childNode = m_folders.value(child);
         total += childNode.totalVideoCount;
         for (auto it = childNode.tagCounts.cbegin(); it != childNode.tagCounts.constEnd(); ++it)
             mergedTags[it.key()] = mergedTags.value(it.key()) + it.value();
     }
 
-    FolderNode &node = m_folders[absPath];
-    node.totalVideoCount = total;
-    node.tagCounts = mergedTags;
+    FolderNode &target = m_folders[absPath];
+    target.totalVideoCount = total;
+    target.tagCounts = mergedTags;
 }
 
 void LibraryScanner::flushItems(bool force)

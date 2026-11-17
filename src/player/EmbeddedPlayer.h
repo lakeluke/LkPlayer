@@ -42,4 +42,6 @@ private:
     QTimer m_syncTimer;
     quintptr m_host = 0;
     quintptr m_videoWindow = 0;
+    /** Last surface size that was pushed to the native windows. */
+    QSize m_lastSurfaceSize;
 };

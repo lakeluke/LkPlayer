@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QObject>
 #include <QProcessEnvironment>
 #include <QString>
@@ -77,6 +78,8 @@ public:
     quintptr windowHandle() const { return m_window; }
 
 signals:
+    /** The process is up: ffplay has taken over the file. */
+    void started();
     void positionChanged(double seconds);
     void durationChanged(double seconds);
     void finished(int exitCode);
@@ -87,6 +90,8 @@ private:
     void handleStandardError();
     void pollForWindow();
     void resetWindowTracking();
+    /** Sends a queued shortcut once the ffplay window is known. */
+    void flushPendingShortcuts();
 
     QProcess *m_process = nullptr;
     QTimer *m_windowTimer = nullptr;
@@ -100,4 +105,6 @@ private:
     quintptr m_window = 0;
     int m_windowPolls = 0;
     quintptr m_windowHostHint = 0;
+    /** Shortcuts requested before ffplay's window existed. */
+    QByteArray m_pendingKeys;
 };

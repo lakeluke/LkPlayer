@@ -144,7 +144,10 @@ Item {
     }
 
     // ----------------------------------------------------------- stage row
-    Row {
+    // The video surface is anchored to the panel slot instead of computing its
+    // width from a magic number: it takes whatever space is left, so hiding the
+    // metadata panel always lets it fill the stage.
+    Item {
         id: stage
         anchors.top: header.bottom
         anchors.topMargin: Theme.spacing
@@ -154,12 +157,24 @@ Item {
         anchors.rightMargin: Theme.spacingLarge
         anchors.bottom: controls.top
         anchors.bottomMargin: Theme.spacing
-        spacing: Theme.spacing
 
         VideoSurface {
             id: surface
-            width: page.detailsVisible ? parent.width - 360 : parent.width
-            height: parent.height
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: drawerHolder.left
+        }
+
+        // Collapses to zero width when the panel is hidden, which is what the
+        // video surface expands into.
+        Item {
+            id: drawerHolder
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: page.detailsVisible ? 344 + Theme.spacing : 0
+            clip: true
 
             Behavior on width {
                 NumberAnimation {
@@ -167,17 +182,19 @@ Item {
                     easing: Theme.easingStandard
                 }
             }
-        }
 
-        DetailDrawer {
-            width: 344
-            height: parent.height
-            visible: page.detailsVisible
-            opacity: page.detailsVisible ? 1 : 0
+            DetailDrawer {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 344
+                visible: page.detailsVisible
+                opacity: page.detailsVisible ? 1 : 0
 
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: Theme.durationNormal
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: Theme.durationNormal
+                    }
                 }
             }
         }

@@ -188,6 +188,31 @@ Item {
                                     onClicked: App.rescan()
                                 }
                             }
+
+                            Rectangle {
+                                width: 116
+                                height: 36
+                                radius: 18
+                                color: fullRescanArea.containsMouse ? Theme.surfaceHover : Theme.glass
+                                border.width: 1
+                                border.color: Theme.border
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "忽略缓存重扫"
+                                    color: Theme.textSecondary
+                                    font.pixelSize: Theme.fontCaption
+                                }
+
+                                MouseArea {
+                                    id: fullRescanArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: !App.scanning && App.libraryRoot.length > 0
+                                    onClicked: App.rescanFull()
+                                }
+                            }
                         }
                     }
                 }

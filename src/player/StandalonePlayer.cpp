@@ -18,6 +18,18 @@ StandalonePlayer::StandalonePlayer(QObject *parent)
     connect(m_process, &FfplayProcess::durationChanged, this, [this](double seconds) {
         setDurationInternal(seconds);
     });
+    connect(m_process, &FfplayProcess::started, this, [this]() {
+        // `Loading` only ends once ffplay is actually running: until then every
+        // transport command (play/pause, seek) would be ignored by the state
+        // machine, which made the control bar look dead.
+        if (state() != Loading)
+            return;
+        setState(Playing);
+        if (m_resumePaused) {
+            m_resumePaused = false;
+            setPaused(true);
+        }
+    });
     connect(m_process, &FfplayProcess::windowFound, this, [this](quintptr handle) {
         onWindowFound(handle);
     });
@@ -75,12 +87,14 @@ void StandalonePlayer::restartAt(double seconds)
     if (filePath().isEmpty())
         return;
     qCInfo(lcStandalone) << "restarting playback at" << seconds << "seconds";
+    m_resumePaused = isPaused();
     setState(Loading);
     startPlayback(filePath(), seconds);
 }
 
 void StandalonePlayer::stopPlayback()
 {
+    m_resumePaused = false;
     if (m_process)
         m_process->stop();
     afterStop();

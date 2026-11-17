@@ -4,6 +4,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include "core/LibraryIndex.h"
 #include "core/LibraryScanner.h"
 #include "core/NfoParser.h"
 #include "core/PathUtils.h"
@@ -204,6 +205,170 @@ private slots:
             items += args.at(0).value<MediaItemList>();
         QCOMPARE(items.size(), 1);
         QCOMPARE(items.first().fileName, QStringLiteral("yes.mp4"));
+    }
+
+    // --------------------------------------------------------------- index ---
+    void indexSurvivesRoundTrip()
+    {
+        QTemporaryDir temp;
+        QVERIFY(temp.isValid());
+        const QString file = temp.path() + "/index.bin";
+
+        LibraryIndex index;
+        index.setRootPath(QStringLiteral("/lib/root"));
+
+        LibraryFolderSnapshot snapshot;
+        snapshot.node.path = QStringLiteral("/lib/root/Scene");
+        snapshot.node.name = QStringLiteral("Scene");
+        snapshot.node.depth = 1;
+        snapshot.node.childPaths = { QStringLiteral("/lib/root/Scene/A") };
+        snapshot.node.directVideoCount = 1;
+        snapshot.node.totalVideoCount = 3;
+        snapshot.node.tagCounts = { { QStringLiteral("Drama"), 2 } };
+        snapshot.directTagCounts = { { QStringLiteral("Drama"), 1 } };
+        snapshot.modifiedMs = 123456789;
+
+        MediaItem item;
+        item.filePath = QStringLiteral("/lib/root/Scene/a.mp4");
+        item.fileName = QStringLiteral("a.mp4");
+        item.folderPath = QStringLiteral("/lib/root/Scene");
+        item.title = QStringLiteral("A");
+        item.tags = { QStringLiteral("Drama") };
+        item.duration = 60.0;
+        item.fileSize = 42;
+        item.lastModified = 999;
+        snapshot.items.append(item);
+        index.insert(snapshot);
+
+        QVERIFY(index.save(file));
+
+        LibraryIndex loaded;
+        QVERIFY(LibraryIndex::load(file, QStringLiteral("/lib/root"), &loaded));
+        QCOMPARE(loaded.folderCount(), 1);
+
+        const LibraryFolderSnapshot *restored = loaded.find(QStringLiteral("/lib/root/Scene"));
+        QVERIFY(restored != nullptr);
+        QCOMPARE(restored->modifiedMs, snapshot.modifiedMs);
+        QCOMPARE(restored->node.totalVideoCount, 3);
+        QCOMPARE(restored->node.tagCounts.value(QStringLiteral("Drama")), 2);
+        QCOMPARE(restored->directTagCounts.value(QStringLiteral("Drama")), 1);
+        QCOMPARE(restored->items.size(), 1);
+        QCOMPARE(restored->items.first().title, QStringLiteral("A"));
+        QCOMPARE(restored->items.first().duration, 60.0);
+
+        // An index written for one library must never be applied to another.
+        LibraryIndex foreign;
+        QVERIFY(!LibraryIndex::load(file, QStringLiteral("/other/root"), &foreign));
+    }
+
+    void incrementalScanOnlyReportsChangedFolders()
+    {
+        QTemporaryDir library;
+        QTemporaryDir cache;
+        QVERIFY(library.isValid());
+        QVERIFY(cache.isValid());
+
+        const QString root = library.path();
+        const QString folder = root + "/Scene/PPC-001";
+        QVERIFY(QDir().mkpath(folder));
+        QVERIFY(writeFile(folder + "/PPC-001-title.mp4", "fake video"));
+
+        const QString indexFile = cache.path() + "/index.bin";
+
+        // Let the freshly written directory timestamp settle first, otherwise
+        // the first scan would record a value the file system still updates.
+        QTest::qWait(1200);
+
+        {
+            LibraryScanner scanner;
+            QSignalSpy finishedSpy(&scanner, &LibraryScanner::scanFinished);
+            scanner.setRootPath(root);
+            scanner.setIndexFile(indexFile);
+            scanner.start();
+            QVERIFY(finishedSpy.wait(20000));
+        }
+        QVERIFY(QFile::exists(indexFile));
+
+        // Second pass, nothing touched on disk: the cached rows are published
+        // and no folder is re-read.
+        {
+            LibraryScanner scanner;
+            QSignalSpy itemsSpy(&scanner, &LibraryScanner::itemsReady);
+            QSignalSpy deltaSpy(&scanner, &LibraryScanner::folderItemsChanged);
+            QSignalSpy finishedSpy(&scanner, &LibraryScanner::scanFinished);
+            scanner.setRootPath(root);
+            scanner.setIndexFile(indexFile);
+            scanner.start();
+            QVERIFY(finishedSpy.wait(20000));
+
+            MediaItemList published;
+            for (const QList<QVariant> &args : itemsSpy)
+                published += args.at(0).value<MediaItemList>();
+            QCOMPARE(published.size(), 1);
+            QCOMPARE(deltaSpy.count(), 0);
+        }
+
+        // Third pass after adding a file: only that folder reports a change.
+        // Windows only flushes a directory timestamp lazily, so wait until the
+        // change is actually readable before asking for the incremental scan.
+        const QDateTime beforeSecondFile = QFileInfo(folder).lastModified();
+        QVERIFY(writeFile(folder + "/PPC-001-second.mp4", "another video"));
+        QVERIFY(QTest::qWaitFor(
+            [folder, beforeSecondFile]() {
+                return QFileInfo(folder).lastModified() != beforeSecondFile;
+            },
+            5000));
+
+        LibraryScanner scanner;
+        QSignalSpy deltaSpy(&scanner, &LibraryScanner::folderItemsChanged);
+        QSignalSpy finishedSpy(&scanner, &LibraryScanner::scanFinished);
+        scanner.setRootPath(root);
+        scanner.setIndexFile(indexFile);
+        scanner.start();
+        QVERIFY(finishedSpy.wait(20000));
+
+        QCOMPARE(deltaSpy.count(), 1);
+        QCOMPARE(deltaSpy.at(0).at(0).toString(), QDir::cleanPath(folder));
+        QCOMPARE(deltaSpy.at(0).at(1).value<MediaItemList>().size(), 2);
+    }
+
+    void fullScanIgnoresTheIndex()
+    {
+        QTemporaryDir library;
+        QTemporaryDir cache;
+        QVERIFY(library.isValid());
+        QVERIFY(cache.isValid());
+
+        const QString root = library.path();
+        QVERIFY(QDir().mkpath(root + "/A"));
+        QVERIFY(writeFile(root + "/A/one.mp4", "x"));
+        const QString indexFile = cache.path() + "/index.bin";
+
+        {
+            LibraryScanner scanner;
+            QSignalSpy finishedSpy(&scanner, &LibraryScanner::scanFinished);
+            scanner.setRootPath(root);
+            scanner.setIndexFile(indexFile);
+            scanner.start();
+            QVERIFY(finishedSpy.wait(20000));
+        }
+
+        LibraryScanner scanner;
+        QSignalSpy itemsSpy(&scanner, &LibraryScanner::itemsReady);
+        QSignalSpy deltaSpy(&scanner, &LibraryScanner::folderItemsChanged);
+        QSignalSpy structureSpy(&scanner, &LibraryScanner::structureReady);
+        QSignalSpy finishedSpy(&scanner, &LibraryScanner::scanFinished);
+        scanner.setRootPath(root);
+        scanner.setIndexFile(indexFile);
+        scanner.startWithMode(LibraryScanner::Mode::Full);
+        QVERIFY(finishedSpy.wait(20000));
+
+        MediaItemList items;
+        for (const QList<QVariant> &args : itemsSpy)
+            items += args.at(0).value<MediaItemList>();
+        QCOMPARE(items.size(), 1);
+        QCOMPARE(deltaSpy.count(), 0);
+        QCOMPARE(structureSpy.count(), 1);
     }
 };
 

@@ -129,6 +129,33 @@ void MediaItemModel::addItems(const MediaItemList &items)
     emit countChanged();
 }
 
+void MediaItemModel::replaceFolder(const QString &folderPath, const MediaItemList &items)
+{
+    if (folderPath.isEmpty())
+        return;
+
+    bool removed = false;
+    for (int row = m_items.size() - 1; row >= 0; --row) {
+        if (m_items.at(row).folderPath != folderPath)
+            continue;
+        beginRemoveRows(QModelIndex(), row, row);
+        m_items.removeAt(row);
+        endRemoveRows();
+        removed = true;
+    }
+
+    if (removed) {
+        m_pathIndex.clear();
+        m_pathIndex.reserve(m_items.size());
+        for (int row = 0; row < m_items.size(); ++row)
+            m_pathIndex.insert(m_items.at(row).filePath, row);
+        emit countChanged();
+    }
+
+    if (!items.isEmpty())
+        addItems(items);
+}
+
 const MediaItem *MediaItemModel::itemAt(int row) const
 {
     if (row < 0 || row >= m_items.size())

@@ -46,4 +46,6 @@ protected:
 
 private:
     FfplayProcess *m_process = nullptr;
+    /** A seek restarts ffplay; remember that it has to stay paused afterwards. */
+    bool m_resumePaused = false;
 };

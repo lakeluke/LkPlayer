@@ -33,6 +33,9 @@ bool EmbeddedPlayer::hasValidSurface() const
 
 void EmbeddedPlayer::beforeStart()
 {
+    // The previous ffplay process is gone (or is about to be), so its window
+    // handle is stale; a restart has to attach the new window from scratch.
+    m_videoWindow = 0;
     ensureHostWindow();
     m_syncTimer.start();
 }
@@ -104,8 +107,16 @@ QProcessEnvironment EmbeddedPlayer::buildEnvironment() const
 
 void EmbeddedPlayer::applyVideoRectImpl()
 {
-    if (m_host == 0)
-        return;
+    // A geometry update can arrive before the host exists (surface laid out
+    // after playback started) - creating it here keeps the video inside the
+    // page instead of leaving the ffplay window floating.
+    if (m_host == 0) {
+        if (!isActive())
+            return;
+        ensureHostWindow();
+        if (m_host == 0)
+            return;
+    }
     syncWindows();
 }
 
@@ -125,11 +136,21 @@ void EmbeddedPlayer::onWindowFound(quintptr handle)
 
 void EmbeddedPlayer::attachVideoWindow(quintptr handle)
 {
-    if (handle == 0 || m_host == 0)
+    if (handle == 0)
         return;
 
-    if (m_videoWindow == handle)
+    // The host may have been torn down (for instance by a previous stop): never
+    // leave the ffplay window floating as a top level window, recreate it.
+    if (m_host == 0) {
+        ensureHostWindow();
+        if (m_host == 0)
+            return;
+    }
+
+    if (m_videoWindow == handle) {
+        NativeWindow::attachToHost(handle, m_host);
         return;
+    }
 
     qCInfo(lcEmbedded) << "attaching ffplay window to the QML surface";
     NativeWindow::attachToHost(handle, m_host);
@@ -148,6 +169,11 @@ void EmbeddedPlayer::syncWindows()
     const QRectF rect = videoRect();
     const int w = qMax(1, qRound(rect.width()));
     const int h = qMax(1, qRound(rect.height()));
+
+    if (QSize(w, h) != m_lastSurfaceSize) {
+        m_lastSurfaceSize = QSize(w, h);
+        qCDebug(lcEmbedded) << "video surface resized to" << rect;
+    }
 
     if (hasValidSurface()) {
         NativeWindow::setChildGeometry(m_host, qRound(rect.x()), qRound(rect.y()), w, h);

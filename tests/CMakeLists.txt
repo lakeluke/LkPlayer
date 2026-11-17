@@ -9,6 +9,7 @@ endfunction()
 
 lk_add_core_test(tst_core
     tst_core.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/LibraryIndex.cpp
     ${CMAKE_SOURCE_DIR}/src/core/NfoParser.cpp
     ${CMAKE_SOURCE_DIR}/src/core/PathUtils.cpp
     ${CMAKE_SOURCE_DIR}/src/core/LibraryScanner.cpp

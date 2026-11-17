@@ -1,6 +1,7 @@
 #include "app/AppPaths.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -65,6 +66,19 @@ QString coverCacheDir()
     const QString dir = QDir(base).absoluteFilePath(QStringLiteral("covers"));
     QDir().mkpath(dir);
     return dir;
+}
+
+QString scanIndexFile(const QString &rootPath)
+{
+    const QString base = isPortable() ? dataRoot()
+                                      : QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QDir().mkpath(base);
+
+    const QString cleaned = QDir::cleanPath(rootPath);
+    const QByteArray digest =
+        QCryptographicHash::hash(cleaned.toUtf8(), QCryptographicHash::Sha1).toHex();
+    return QDir(base).absoluteFilePath(QStringLiteral("scan-") + QString::fromLatin1(digest)
+                                       + QStringLiteral(".bin"));
 }
 
 } // namespace AppPaths

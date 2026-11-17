@@ -22,6 +22,7 @@ class LibraryScanner;
 class MediaItemModel;
 class ThumbnailCache;
 class QQuickWindow;
+class QTimer;
 
 /**
  * Facade that the QML layer talks to. It owns the library data, the scanning
@@ -118,6 +119,8 @@ public slots:
     void attachWindow(QObject *window);
 
     void rescan();
+    /** Ignores the scan index and reads every folder again (settings action). */
+    Q_INVOKABLE void rescanFull();
     void openFolder(const QString &folderPath);
     void navigateUp();
     void navigateToBreadcrumb(int index);
@@ -190,9 +193,14 @@ private:
     void setStatus(const QString &message);
     void setError(const QString &message);
 
+    /** Drops everything the current scan produced (model, folders, counters). */
+    void resetLibraryView();
     void onItemsReady(const MediaItemList &items);
+    void onFolderItemsChanged(const QString &folderPath, const MediaItemList &items);
     void onStructureReady(const FolderNodeList &folders);
     void onScanFinished(int totalVideos, bool cancelled);
+    /** Cheap background pass that only reports folders whose content changed. */
+    void verifyLibrary();
 
     SettingsStore *m_settings = nullptr;
     LibraryScanner *m_scanner = nullptr;
@@ -206,6 +214,13 @@ private:
     QQuickWindow *m_window = nullptr;
     quintptr m_windowHandle = 0;
     QRectF m_videoRectDip;
+
+    /** Drives the cheap background re-check of the library. */
+    QTimer *m_verifyTimer = nullptr;
+    qint64 m_lastVerifyMs = 0;
+    /** Set when a (re)scan was requested while another one was still running. */
+    bool m_restartScan = false;
+    bool m_restartFull = false;
 
     QHash<QString, FolderNode> m_folderNodes;
     QHash<QString, QString> m_folderCoverHints;

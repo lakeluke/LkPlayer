@@ -26,4 +26,10 @@ QString logDir();
 /** Directory holding the generated covers. */
 QString coverCacheDir();
 
+/**
+ * File the scan index of `rootPath` is cached in. One file per library root, so
+ * switching libraries never mixes their snapshots.
+ */
+QString scanIndexFile(const QString &rootPath);
+
 } // namespace AppPaths

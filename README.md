@@ -32,10 +32,12 @@ cmake --build build -j
 Linux：
 
 ```bash
-sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-declarative-dev qt6-svg-dev libmpv-dev
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+sudo apt install build-essential cmake ninja-build \
+  qt6-base-dev qt6-declarative-dev qt6-svg-dev libmpv-dev \
+  qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-dialogs \
+  qml6-module-qtquick-layouts qml6-module-qtquick-effects
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-sudo cmake --install build      # /usr/bin/lkplayer
 ```
 
 内嵌播放需要 libmpv 的开发文件，Windows 下单独安装：
@@ -45,6 +47,9 @@ pacman -S mingw-w64-ucrt-x86_64-mpv
 ```
 
 产物：Windows 为 `build/LkPlayer.exe`（GUI 程序，无控制台），Linux 为 `build/lkplayer`。
+
+> `cmake --install` 只安装可执行文件本体，运行时仍取自发行版 Qt；**自带运行时的发行包由 CI 构建**
+> （见「发布」）。日常开发直接跑 `build/lkplayer` 即可。
 
 ### 平台差异
 
@@ -159,15 +164,25 @@ git push origin v0.1.0
 | 产物 | 平台 | 说明 |
 | --- | --- | --- |
 | `LkPlayer-<tag>-win64-portable.zip` | Windows x64 | 便携版：解压即用，内置 Qt 运行时与 `qt.conf` |
-| `lkplayer_<version>_amd64.deb` | Debian / Ubuntu | 链接发行版 Qt，依赖由 `dpkg-shlibdeps` 自动计算 |
+| `lkplayer_<version>_amd64.deb` | Debian / Ubuntu | 内置 Qt 运行时与 QML 模块，不依赖发行版 Qt |
 | `LkPlayer-<version>-x86_64.AppImage` | 通用 Linux | 内置 Qt 运行时与 QML 模块 |
 
 也可在 Actions 页面用 `Run workflow` 手动触发（此时只上传构建产物，不创建 Release）。
-Windows 便携包与 AppImage 都自带 libmpv（`libmpv-2.dll` / `libmpv.so.2`），内嵌播放开箱可用；
-两者仍不含 ffmpeg / ffplay，需要封面抽帧或「独立窗口」模式时按「运行与首次配置」自行设置工具目录。
+三个包都自带 libmpv（`libmpv-2.dll` / `libmpv.so.2`），内嵌播放开箱可用；也都不含 ffmpeg / ffplay，
+需要封面抽帧或「独立窗口」模式时按「运行与首次配置」自行设置工具目录。
 
-Linux 构建跑在 `debian:trixie` 容器内：它是带 Qt 6.5+ 的最旧发行版（Qt 6.8.2），
-`.deb` 因此能直接复用发行版 Qt 而不必捆绑运行时。
+Linux 的 deb 与 AppImage **共用同一份运行时**：CI 先用 `linuxdeploy` 把 Qt 库、QML 模块、libmpv 和
+平台插件收集成一个相对路径（`RPATH` 为 `$ORIGIN`）的可重定位目录，再分别包成两种格式。deb 把它放到
+`/opt/lkplayer`，`/usr/bin/lkplayer` 只是一个启动脚本，因此装完不会污染系统的 Qt 或 libmpv。
+.deb 的 `Depends` 由 `dpkg-shlibdeps` 计算后剔除 `libqt6*` 与 `libmpv*`（我们自己带了），
+只保留 libc、X11、GL 等系统库。
+
+安装 Linux 包：
+
+```bash
+sudo apt install ./lkplayer_0.1.0_amd64.deb    # 之后可从应用菜单启动，或执行 lkplayer
+chmod +x LkPlayer-0.1.0-x86_64.AppImage && ./LkPlayer-0.1.0-x86_64.AppImage
+```
 
 ### 便携模式
 

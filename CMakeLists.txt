@@ -205,21 +205,8 @@ if(LKPLAYER_BUILD_TESTS)
 endif()
 
 # ------------------------------------------------------------------ packaging
-# The .deb links against the distribution Qt, so dpkg-shlibdeps derives the
-# library dependencies; only the QML modules have to be named explicitly because
-# nothing links against them.
-if(UNIX AND NOT APPLE)
-    set(CPACK_GENERATOR "DEB")
-    set(CPACK_PACKAGE_NAME "lkplayer")
-    set(CPACK_PACKAGE_VENDOR "LkPlayer")
-    set(CPACK_PACKAGE_CONTACT "LkPlayer <noreply@example.com>")
-    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Local media library player built on Qt Quick and libmpv")
-    set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
-    set(CPACK_DEBIAN_PACKAGE_SECTION "video")
-    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/lakeluke/LkPlayer")
-    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-    # Single line: it is written straight into the control file's Depends field.
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "qt6-qpa-plugins, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-dialogs, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtquick-effects, qml6-module-qtqml-workerscript, qml6-module-qt-labs-folderlistmodel")
-    include(CPack)
-endif()
+# Deliberately no CPack. The .deb is assembled in CI from the linuxdeploy bundle
+# so it carries its own Qt runtime, QML modules and libmpv, which means it has
+# to be built from a deployed tree rather than from these install() rules. Those
+# rules still exist for `cmake --install`, but that tree expects the distribution
+# QML modules to be present at run time.

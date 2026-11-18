@@ -120,6 +120,8 @@ jobs:
             VERSION="${LK_VERSION#v}"
             [ -n "$VERSION" ] || VERSION=0.0.0
 
+            # The QML modules are installed only so linuxdeploy can copy them
+            # into the bundle: the packages themselves ship the runtime.
             apt-get update
             apt-get install -y --no-install-recommends \
               build-essential ca-certificates cmake ninja-build pkg-config \
@@ -135,17 +137,16 @@ jobs:
               libmpv-dev
 
             cmake -G Ninja -S . -B build -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_INSTALL_PREFIX=/usr -DLKPLAYER_VERSION="$VERSION"
+              -DLKPLAYER_VERSION="$VERSION"
             cmake --build build
             ctest --test-dir build --output-on-failure
-
-            # --- deb ---------------------------------------------------------
             mkdir -p dist
-            cpack --config build/CPackConfig.cmake -B dist
 
-            # --- AppImage ----------------------------------------------------
-            # linuxdeploy bundles the Qt runtime plus the QML imports into an
-            # AppDir, then turns it into an AppImage.
+            # --- one bundle, two packages ------------------------------------
+            # linuxdeploy collects the Qt runtime, the QML imports and the
+            # platform plugins into AppDir/usr and rewrites the RPATHs to be
+            # relative ($ORIGIN), so the tree is relocatable. The AppImage and
+            # the .deb are then two different wrappers around the same files.
             rsvg-convert -w 256 assets/lkplayer.svg -o /tmp/lkplayer.png
             export QMAKE=/usr/bin/qmake6
             export QML_SOURCES_PATHS=/src/qml
@@ -160,6 +161,54 @@ jobs:
               --plugin qt \
               --output appimage
             mv ./*.AppImage "dist/LkPlayer-$VERSION-x86_64.AppImage"
+
+            # --- deb ---------------------------------------------------------
+            ROOT=/tmp/debroot
+            rm -rf "$ROOT"
+            mkdir -p "$ROOT/opt" "$ROOT/usr/bin" \
+                     "$ROOT/usr/share/applications" \
+                     "$ROOT/usr/share/icons/hicolor/256x256/apps" \
+                     "$ROOT/DEBIAN"
+            cp -a AppDir/usr "$ROOT/opt/lkplayer"
+            cp assets/lkplayer.desktop "$ROOT/usr/share/applications/"
+            cp /tmp/lkplayer.png "$ROOT/usr/share/icons/hicolor/256x256/apps/lkplayer.png"
+
+            # The bundle lives outside the default search paths, so /usr/bin
+            # holds a launcher instead of the binary itself.
+            printf "#!/bin/sh\nexec /opt/lkplayer/bin/lkplayer \"\$@\"\n" > "$ROOT/usr/bin/lkplayer"
+            chmod +x "$ROOT/usr/bin/lkplayer"
+
+            # Qt and libmpv are bundled, so the distribution only has to provide
+            # the system level libraries. dpkg-shlibdeps resolves those from the
+            # ELF dependencies; the `libqt6*` / `libmpv*` entries it also finds
+            # are dropped because we ship them ourselves.
+            FALLBACK_DEPS="libc6, libstdc++6, libgcc-s1, zlib1g, libglib2.0-0, libgl1, libegl1, libx11-6, libxext6, libxcb1, libxcb-cursor0, libxkbcommon0, libxkbcommon-x11-0, libfontconfig1, libfreetype6, libdbus-1-3"
+            DEPS="$(cd "$ROOT" && mkdir -p debian && \
+              printf "Source: lkplayer\nPackage: lkplayer\n" > debian/control && \
+              dpkg-shlibdeps --ignore-missing-info -O -e opt/lkplayer/bin/lkplayer 2>/dev/null \
+                | sed -n "s/^shlibs:Depends=//p" \
+                | tr "," "\n" | sed "s/^[[:space:]]*//" \
+                | grep -vE "^(libqt6|libmpv)" | paste -sd, -)"
+            rm -rf "$ROOT/debian"
+            [ -n "$DEPS" ] || DEPS="$FALLBACK_DEPS"
+
+            # printf rather than a heredoc: a control file line that starts with
+            # whitespace is a continuation line, which would corrupt the header.
+            printf "%s\n" \
+              "Package: lkplayer" \
+              "Version: $VERSION" \
+              "Section: video" \
+              "Priority: optional" \
+              "Architecture: amd64" \
+              "Maintainer: LkPlayer <noreply@example.com>" \
+              "Homepage: https://github.com/lakeluke/LkPlayer" \
+              "Depends: $DEPS" \
+              "Description: Local media library player built on Qt Quick and libmpv" \
+              " Scans a media folder recursively and shows it as a poster grid." \
+              " Bundles the Qt runtime and libmpv, so neither is required from the distribution." \
+              > "$ROOT/DEBIAN/control"
+            cat "$ROOT/DEBIAN/control"
+            dpkg-deb --build --root-owner-group "$ROOT" "dist/lkplayer_${VERSION}_amd64.deb"
           '
 
       - name: Upload artifacts

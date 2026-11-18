@@ -120,13 +120,21 @@ Item {
         }
 
         // ----------------------------------------------------- folder strip
+        //
+        // Wrapping grid instead of a horizontal strip: a single row only holds
+        // part of the folders and the rest sit behind a scrollbar that is easy
+        // to miss. The strip hugs its content, and once it would take more than
+        // visibleRows rows away from the video grid below it starts scrolling.
         Item {
             id: folderStrip
             anchors.top: header.bottom
             anchors.topMargin: Theme.spacingSmall
             anchors.left: parent.left
             anchors.right: parent.right
-            height: visible ? 250 : 0
+            readonly property int stripHeaderHeight: 24
+            readonly property int visibleRows: 2
+            height: visible ? stripHeaderHeight
+                    + Math.min(folderGrid.contentHeight, visibleRows * folderGrid.cellHeight) : 0
             visible: App.viewMode === "drill" && App.childFolders.count > 0
 
             Row {
@@ -151,23 +159,27 @@ Item {
                 }
             }
 
-            ListView {
-                id: folderRow
+            GridView {
+                id: folderGrid
                 anchors.top: parent.top
                 anchors.topMargin: 24
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                orientation: ListView.Horizontal
-                spacing: Theme.spacing
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 model: App.childFolders
                 cacheBuffer: 600
 
+                // The cell is the card plus the gap, mirroring the media grid
+                // below so both keep the same rhythm.
+                readonly property int cardWidth: 138
+                cellWidth: cardWidth + Theme.cardGap
+                cellHeight: Math.round(cardWidth * Theme.cardAspect) + 46 + Theme.cardGap
+
                 delegate: FolderCard {
-                    width: 138
-                    height: 138 * Theme.cardAspect + 46
+                    width: folderGrid.cardWidth
+                    height: folderGrid.cellHeight - Theme.cardGap
                     folderName: model.name
                     folderPath: model.path
                     coverUrl: model.coverUrl

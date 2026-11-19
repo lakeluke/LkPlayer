@@ -24,7 +24,6 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     QuickControls2
     QuickDialogs2
     QuickLayouts
-    QuickEffects
     Svg
     Xml
     Concurrent
@@ -149,7 +148,6 @@ target_link_libraries(LkPlayer PRIVATE
     Qt6::QuickControls2
     Qt6::QuickDialogs2
     Qt6::QuickLayouts
-    Qt6::QuickEffects
     Qt6::Svg
     Qt6::Xml
     Qt6::Concurrent

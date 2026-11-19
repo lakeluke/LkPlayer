@@ -32,6 +32,9 @@ jobs:
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
+          # libmpv powers the embedded player; the DLL is bundled by the
+          # ldd closure pass below. Note: comments must stay outside the
+          # block scalar, or pacman receives them as package names.
           update: true
           install: >-
             mingw-w64-ucrt-x86_64-gcc
@@ -40,8 +43,6 @@ jobs:
             mingw-w64-ucrt-x86_64-qt6-base
             mingw-w64-ucrt-x86_64-qt6-declarative
             mingw-w64-ucrt-x86_64-qt6-svg
-            # libmpv powers the embedded player; the DLL is bundled by the
-            # ldd closure pass below.
             mingw-w64-ucrt-x86_64-mpv
 
       - name: Configure
@@ -125,7 +126,8 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends \
               build-essential ca-certificates cmake ninja-build pkg-config \
-              qt6-base-dev qt6-declarative-dev qt6-svg-dev \
+              qt6-base-dev qt6-base-private-dev qt6-declarative-dev \
+              qt6-declarative-private-dev qt6-svg-dev \
               qt6-qpa-plugins qt6-svg-plugins \
               qml6-module-qtquick qml6-module-qtquick-controls \
               qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
@@ -147,13 +149,28 @@ jobs:
             # platform plugins into AppDir/usr and rewrites the RPATHs to be
             # relative ($ORIGIN), so the tree is relocatable. The AppImage and
             # the .deb are then two different wrappers around the same files.
+            # The Qt plugin is a separate AppImage that has to sit next to
+            # linuxdeploy (on $PATH) or --plugin qt fails with "Could not
+            # find plugin: qt". Both are extracted instead of executed
+            # because the runner image ships no FUSE.
             rsvg-convert -w 256 assets/lkplayer.svg -o /tmp/lkplayer.png
             export QMAKE=/usr/bin/qmake6
             export QML_SOURCES_PATHS=/src/qml
-            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-            chmod +x linuxdeploy-x86_64.AppImage
-            ./linuxdeploy-x86_64.AppImage --appimage-extract >/dev/null
-            ./squashfs-root/AppRun \
+            # Download into /tmp: linuxdeploy scans the working directory for
+            # linuxdeploy-plugin-*.AppImage and executes them directly, which
+            # aborts on runners without FUSE. Extracted copies are used
+            # instead, reached through the PATH symlink below.
+            wget -q -O /tmp/linuxdeploy-x86_64.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+            wget -q -O /tmp/linuxdeploy-plugin-qt-x86_64.AppImage https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+            chmod +x /tmp/linuxdeploy-x86_64.AppImage /tmp/linuxdeploy-plugin-qt-x86_64.AppImage
+            # Extract into separate directories: --appimage-extract always
+            # creates ./squashfs-root and would otherwise overwrite.
+            mkdir -p .tooling/ld .tooling/qt
+            (cd .tooling/ld && /tmp/linuxdeploy-x86_64.AppImage --appimage-extract >/dev/null)
+            (cd .tooling/qt && /tmp/linuxdeploy-plugin-qt-x86_64.AppImage --appimage-extract >/dev/null)
+            ln -sf qt/squashfs-root/AppRun .tooling/linuxdeploy-plugin-qt
+            export PATH="$PWD/.tooling:$PATH"
+            ./.tooling/ld/squashfs-root/AppRun \
               --appdir AppDir \
               --executable build/lkplayer \
               --desktop-file assets/lkplayer.desktop \

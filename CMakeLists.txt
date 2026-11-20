@@ -15,17 +15,15 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
+# Widgets / QuickControls2 / QuickLayouts / Svg / Xml are deliberately not
+# linked: the UI hand-rolls its controls from plain QtQuick primitives, so
+# linking them would only make windeployqt bundle extra DLLs and QML modules.
 find_package(Qt6 6.5 REQUIRED COMPONENTS
     Core
     Gui
-    Widgets
     Qml
     Quick
-    QuickControls2
     QuickDialogs2
-    QuickLayouts
-    Svg
-    Xml
     Concurrent
 )
 
@@ -142,14 +140,9 @@ target_include_directories(LkPlayer PRIVATE
 target_link_libraries(LkPlayer PRIVATE
     Qt6::Core
     Qt6::Gui
-    Qt6::Widgets
     Qt6::Qml
     Qt6::Quick
-    Qt6::QuickControls2
     Qt6::QuickDialogs2
-    Qt6::QuickLayouts
-    Qt6::Svg
-    Qt6::Xml
     Qt6::Concurrent
 )
 

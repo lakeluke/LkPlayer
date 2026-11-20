@@ -13,7 +13,6 @@
 #include <QPixmap>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
-#include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QStandardPaths>
@@ -111,19 +110,6 @@ void installLogHandler()
 }
 
 /**
- * Prefer the modern Windows 11 look when the style is present and silently
- * fall back otherwise. The application hand rolls its own controls, so a
- * missing style is never fatal.
- */
-void applyQuickStyle()
-{
-    QQuickStyle::setStyle(QStringLiteral("FluentWinUI3"));
-    if (QQuickStyle::name().compare(QStringLiteral("FluentWinUI3"), Qt::CaseInsensitive) != 0)
-        QQuickStyle::setStyle(QStringLiteral("Fusion"));
-    qCInfo(QLoggingCategory("lk.app")) << "quick controls style:" << QQuickStyle::name();
-}
-
-/**
  * QQuickWindow seeds its font from QGuiApplication::font() and propagates it to
  * every child item, so that font *is* the system UI font the QML layer uses.
  *
@@ -198,7 +184,6 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
 
     installLogHandler();
-    applyQuickStyle();
     installSystemFont();
 
     app.setWindowIcon(buildAppIcon());

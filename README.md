@@ -8,7 +8,7 @@
 
 | 依赖 | 版本 | 说明 |
 | --- | --- | --- |
-| Qt | 6.5 及以上（开发环境 6.11.2） | Core / Gui / Widgets / Qml / Quick / QuickControls2 / QuickDialogs2 / QuickLayouts / QuickEffects / Svg / Xml / Concurrent |
+| Qt | 6.5 及以上（开发环境 6.11.2） | Core / Gui / Qml / Quick / QuickDialogs2 / Concurrent（界面控件为纯 QtQuick 自绘，不链接 Widgets / QuickControls2 / QuickLayouts / Svg / Xml） |
 | CMake | 3.21 及以上 | |
 | C++ | C++17 | |
 | Windows | MinGW-w64 或 clang（MSYS2 UCRT64 已验证） | |

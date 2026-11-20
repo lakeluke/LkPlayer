@@ -72,6 +72,26 @@ jobs:
             done
           done
 
+          # Prune what the app never uses. The UI hand-rolls its own controls
+          # from plain QtQuick primitives, so windeployqt's QuickControls2
+          # styles, unused QML modules and debugging plugins are dead weight
+          # (~40 MB raw). QtQuick core files, Window, Dialogs and Effects stay.
+          # Must run after the ldd closure pass, which would otherwise re-copy
+          # these through plugin dependencies (qsvgicon -> Qt6Svg).
+          rm -rf dist/qml/QtQuick/Controls dist/qml/QtQuick/Templates \
+                 dist/qml/QtQuick/Layouts dist/qml/QtQuick/NativeStyle \
+                 dist/qml/QtQuick/Particles dist/qml/QtQuick/LocalStorage \
+                 dist/qml/QtQuick/VectorImage dist/qml/QtQuick/Shapes \
+                 dist/qml/QtQuick/tooling dist/qmltooling dist/generic \
+                 dist/networkinformation dist/iconengines \
+                 dist/imageformats/qsvg.dll dist/Qt6Svg.dll
+          # Root-level QuickControls2 style libraries: windeployqt copies the
+          # Controls QML plugin tree first and the ldd closure pass then pulls
+          # every style it imports to the dist root. Nothing uses styles any
+          # more; QtQuick.Dialogs only needs QuickControls2Impl + Templates2.
+          find dist -maxdepth 1 -name 'Qt6QuickControls2*.dll' \
+            ! -name 'Qt6QuickControls2Impl.dll' -delete
+
           # Without it Qt derives no prefix and reports every QML module as
           # "not installed". windeployqt does not write one for MinGW builds.
           printf '[Paths]\nPrefix = .\nQml2Imports = qml\nPlugins = .\n' > dist/qt.conf

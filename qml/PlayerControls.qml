@@ -412,8 +412,8 @@ Item {
     // ------------------------------------------------------------ mode chip
     Rectangle {
         id: modeChip
-        anchors.right: parent.right
-        anchors.rightMargin: Theme.spacing
+        anchors.right: fullscreenChip.left
+        anchors.rightMargin: Theme.spacingSmall
         anchors.verticalCenter: parent.verticalCenter
         height: 28
         width: modeLabel.implicitWidth + 22
@@ -435,6 +435,60 @@ Item {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: App.setPlayMode(App.nextPlayMode())
+        }
+    }
+
+    // ---------------------------------------------------- fullscreen toggle
+    Rectangle {
+        id: fullscreenChip
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.spacing
+        anchors.verticalCenter: parent.verticalCenter
+        width: 32
+        height: 32
+        radius: 16
+        color: fullscreenArea.containsMouse ? Theme.surfaceHover : Theme.glass
+        border.width: 1
+        border.color: App.fullscreen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
+
+        Canvas {
+            id: fullscreenGlyph
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            property color strokeColor: App.fullscreen ? Theme.accentSoft : Theme.textSecondary
+            onStrokeColorChanged: requestPaint()
+            onPaint: {
+                const ctx = getContext("2d");
+                ctx.reset();
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = 1.6;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                const c = 5;
+                ctx.beginPath();
+                ctx.moveTo(0, c);
+                ctx.lineTo(0, 0);
+                ctx.lineTo(c, 0);
+                ctx.moveTo(width - c, 0);
+                ctx.lineTo(width, 0);
+                ctx.lineTo(width, c);
+                ctx.moveTo(width, height - c);
+                ctx.lineTo(width, height);
+                ctx.lineTo(width - c, height);
+                ctx.moveTo(c, height);
+                ctx.lineTo(0, height);
+                ctx.lineTo(0, height - c);
+                ctx.stroke();
+            }
+        }
+
+        MouseArea {
+            id: fullscreenArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: App.toggleFullscreen()
         }
     }
 }

@@ -130,28 +130,6 @@ Item {
                 }
             }
 
-            Rectangle {
-                height: 32
-                width: fullscreenText.implicitWidth + 34
-                radius: 16
-                color: App.fullscreen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
-                border.width: 1
-                border.color: App.fullscreen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
-
-                Text {
-                    id: fullscreenText
-                    anchors.centerIn: parent
-                    text: App.fullscreen ? "退出全屏" : "全屏"
-                    color: App.fullscreen ? Theme.accentSoft : Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: App.toggleFullscreen()
-                }
-            }
         }
     }
 
@@ -434,6 +412,15 @@ Item {
                     App.toggleFullscreen();
                 else
                     page.backRequested();
+                event.accepted = true;
+                break;
+            case Qt.Key_F11:
+                App.toggleFullscreen();
+                event.accepted = true;
+                break;
+            case Qt.Key_Return:
+            case Qt.Key_Enter:
+                App.toggleFullscreen();
                 event.accepted = true;
                 break;
             case Qt.Key_Left:

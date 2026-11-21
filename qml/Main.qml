@@ -252,6 +252,70 @@ Window {
         }
     }
 
+    // ------------------------------------------------------ window transport
+    // The transport bar and its fullscreen auto-hide live at window level so
+    // they can float above the video layer. The page only reserves space for
+    // them with a bottom margin and no longer anchors to the controls.
+    property bool controlsVisible: true
+
+    // Fullscreen auto-hide: bring the transport bar back and restart the timer.
+    function revealControls() {
+        if (!App.fullscreen)
+            return;
+        window.controlsVisible = true;
+        hideControlsTimer.restart();
+    }
+
+    PlayerControls {
+        id: controls
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.spacingLarge
+        anchors.topMargin: 0
+        height: 78
+        z: 600
+        visible: pageHost.currentPage === "player"
+        opacity: (App.fullscreen && !window.controlsVisible) ? 0 : 1
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 180
+            }
+        }
+    }
+
+    Timer {
+        id: hideControlsTimer
+        interval: 3000
+        repeat: false
+        onTriggered: {
+            if (App.fullscreen)
+                window.controlsVisible = false;
+        }
+    }
+
+    Connections {
+        target: App
+        function onFullscreenChanged() {
+            window.controlsVisible = true;
+            if (App.fullscreen)
+                hideControlsTimer.restart();
+        }
+    }
+
+    // Detects mouse movement in fullscreen to bring the bar back. Hover events
+    // pass through the window-level video item, so this still fires above it.
+    MouseArea {
+        id: fullscreenWakeArea
+        anchors.fill: parent
+        z: 700
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+        enabled: App.fullscreen && pageHost.currentPage === "player"
+        onPositionChanged: window.revealControls()
+    }
+
     Component {
         id: libraryComponent
 

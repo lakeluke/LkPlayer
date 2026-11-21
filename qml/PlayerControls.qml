@@ -21,7 +21,9 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Theme.radiusLarge
-        color: root.fullscreen ? Qt.rgba(8, 10, 16, 0.58) : (Theme.dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(1, 1, 1, 0.8))
+        color: root.fullscreen ? Qt.rgba(8, 10, 16, 0.58)
+               : (Theme.dark ? Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.5)
+                             : Qt.rgba(1, 1, 1, 0.8))
         border.width: 1
         border.color: root.fullscreen ? Qt.rgba(1, 1, 1, 0.12) : Theme.border
     }

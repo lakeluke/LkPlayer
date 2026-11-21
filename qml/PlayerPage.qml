@@ -7,16 +7,7 @@ Item {
 
     signal backRequested()
 
-    property bool controlsVisible: true
     readonly property string playingPath: App.currentItem && App.currentItem.filePath ? App.currentItem.filePath : ""
-
-    // Fullscreen auto-hide: bring the transport bar back and restart the timer.
-    function revealControls() {
-        if (!App.fullscreen)
-            return;
-        page.controlsVisible = true;
-        hideControlsTimer.restart();
-    }
 
     Rectangle {
         anchors.fill: parent
@@ -143,8 +134,8 @@ Item {
         anchors.right: parent.right
         anchors.leftMargin: App.fullscreen ? 0 : Theme.spacingLarge
         anchors.rightMargin: App.fullscreen ? 0 : Theme.spacingLarge
-        anchors.bottom: (App.fullscreen && !page.controlsVisible) ? parent.bottom : controls.top
-        anchors.bottomMargin: App.fullscreen ? 0 : Theme.spacing
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: App.fullscreen ? 0 : (78 + Theme.spacingLarge + Theme.spacing)
 
         // The playlist panel slides in from the left edge. Its fold handle lives
         // in Main.qml, floating over the video, so this slot only holds the panel.
@@ -283,53 +274,6 @@ Item {
                 }
             }
         }
-    }
-
-    // -------------------------------------------------------------- controls
-    PlayerControls {
-        id: controls
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: Theme.spacingLarge
-        anchors.topMargin: 0
-        height: 78
-        opacity: (App.fullscreen && !page.controlsVisible) ? 0 : 1
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 180
-            }
-        }
-    }
-
-    // ------------------------------------------------- fullscreen auto-hide
-    Timer {
-        id: hideControlsTimer
-        interval: 3000
-        repeat: false
-        onTriggered: {
-            if (App.fullscreen)
-                page.controlsVisible = false;
-        }
-    }
-
-    Connections {
-        target: App
-        function onFullscreenChanged() {
-            page.controlsVisible = true;
-            if (App.fullscreen)
-                hideControlsTimer.restart();
-        }
-    }
-
-    // Detects mouse movement in fullscreen to bring the bar back. Hover events
-    // pass through the window-level video item, so this still fires above it.
-    MouseArea {
-        anchors.fill: parent
-        hoverEnabled: true
-        acceptedButtons: Qt.NoButton
-        enabled: App.fullscreen
-        onPositionChanged: page.revealControls()
     }
 
     // Keyboard shortcuts. Shortcut is window-scoped by default, so these keep

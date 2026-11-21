@@ -99,7 +99,15 @@ void MediaFilterProxyModel::setSearchText(const QString &text)
 void MediaFilterProxyModel::refreshFilter()
 {
     m_availableTagsDirty = true;
+    // invalidateFilter() is deprecated in favour of the begin/endFilterChange()
+    // pair; the replacement landed in Qt 6.12, so keep the old call on older
+    // Qt to preserve the project's declared 6.5 minimum.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 12, 0)
+    beginFilterChange();
+    endFilterChange();
+#else
     invalidateFilter();
+#endif
     emit countChanged();
     emit availableTagsChanged();
 }

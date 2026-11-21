@@ -132,29 +132,6 @@ Item {
 
             Rectangle {
                 height: 32
-                width: detailsText.implicitWidth + 34
-                radius: 16
-                color: page.detailsVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
-                border.width: 1
-                border.color: page.detailsVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
-
-                Text {
-                    id: detailsText
-                    anchors.centerIn: parent
-                    text: "详情"
-                    color: page.detailsVisible ? Theme.accentSoft : Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: page.detailsVisible = !page.detailsVisible
-                }
-            }
-
-            Rectangle {
-                height: 32
                 width: fullscreenText.implicitWidth + 34
                 radius: 16
                 color: App.fullscreen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
@@ -330,14 +307,14 @@ Item {
             anchors.right: drawerHolder.left
         }
 
-        // Collapses to zero width when the panel is hidden, which is what the
-        // video surface expands into.
+        // The details panel mirrors the playlist: a slim fold handle on the
+        // right edge stays grabbable while the panel slides in and out.
         Item {
             id: drawerHolder
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: (page.detailsVisible && !App.fullscreen) ? 344 + Theme.spacing : 0
+            width: App.fullscreen ? 0 : (page.detailsVisible ? 378 : 34)
             clip: true
 
             Behavior on width {
@@ -347,8 +324,39 @@ Item {
                 }
             }
 
+            // Fold handle
+            Rectangle {
+                id: detailsToggle
+                anchors.right: parent.right
+                anchors.rightMargin: 2
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30
+                height: 64
+                radius: 15
+                color: detailsToggleArea.containsMouse ? Theme.surfaceHover : Theme.glass
+                border.width: 1
+                border.color: page.detailsVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
+
+                Text {
+                    anchors.centerIn: parent
+                    text: page.detailsVisible ? "›" : "‹"
+                    color: page.detailsVisible ? Theme.accentSoft : Theme.textSecondary
+                    font.pixelSize: 20
+                    font.weight: Font.DemiBold
+                }
+
+                MouseArea {
+                    id: detailsToggleArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.detailsVisible = !page.detailsVisible
+                }
+            }
+
             DetailDrawer {
                 anchors.right: parent.right
+                anchors.rightMargin: 34
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: 344

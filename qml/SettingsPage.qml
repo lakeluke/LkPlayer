@@ -372,8 +372,9 @@ Item {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        const detected = App.settings.ffmpegDir;
-                                        App.setToolDirectory(detected);
+                                        const detected = App.detectToolDir();
+                                        if (detected.length > 0)
+                                            App.setToolDirectory(detected);
                                     }
                                 }
                             }

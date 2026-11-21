@@ -778,6 +778,11 @@ QString AppController::checkToolDirectory(const QString &dir) const
     return m_settings->checkDirectory(dir);
 }
 
+QString AppController::detectToolDir() const
+{
+    return SettingsStore::detectToolDir();
+}
+
 void AppController::openWithSystemPlayer(const QString &filePath)
 {
     if (filePath.isEmpty())

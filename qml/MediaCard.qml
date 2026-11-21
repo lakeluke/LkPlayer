@@ -187,7 +187,7 @@ Item {
         Text {
             width: parent.width
             text: root.title
-            color: root.hovered ? Theme.textPrimary : Theme.textPrimary
+            color: Theme.textPrimary
             font.pixelSize: Theme.fontBody
             font.weight: Font.DemiBold
             elide: Text.ElideRight

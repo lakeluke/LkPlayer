@@ -172,6 +172,8 @@ public slots:
 
     /** Returns an empty string when the directory is usable, an error otherwise. */
     Q_INVOKABLE QString checkToolDirectory(const QString &dir) const;
+    /** First directory on PATH that contains ffplay/ffmpeg, or empty. */
+    Q_INVOKABLE QString detectToolDir() const;
     Q_INVOKABLE QVariantMap itemAt(int row) const;
     Q_INVOKABLE QString formatDuration(double seconds) const;
 

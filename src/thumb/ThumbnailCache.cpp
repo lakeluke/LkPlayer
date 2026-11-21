@@ -18,7 +18,7 @@ ThumbnailCache::ThumbnailCache(QObject *parent)
 {
     m_directory = AppPaths::coverCacheDir();
     if (!QDir().exists(m_directory))
-        qCWarning(lcThumbCache) << "could not create thumbnail cache directory" << m_directory;
+        qCWarning(lcThumbCache) << "thumbnail cache directory is missing:" << m_directory;
 }
 
 QString ThumbnailCache::keyFor(const QString &videoPath) const

@@ -155,9 +155,18 @@ bool MediaFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &s
     }
 
     if (!m_searchText.isEmpty()) {
-        const bool hit = item->title.contains(m_searchText, Qt::CaseInsensitive)
-                         || item->fileName.contains(m_searchText, Qt::CaseInsensitive)
-                         || item->relativeFolder.contains(m_searchText, Qt::CaseInsensitive);
+        bool hit = item->title.contains(m_searchText, Qt::CaseInsensitive)
+                   || item->fileName.contains(m_searchText, Qt::CaseInsensitive)
+                   || item->relativeFolder.contains(m_searchText, Qt::CaseInsensitive);
+        // The docs promise the search box also matches tags.
+        if (!hit) {
+            for (const QString &tag : item->tags) {
+                if (tag.contains(m_searchText, Qt::CaseInsensitive)) {
+                    hit = true;
+                    break;
+                }
+            }
+        }
         if (!hit)
             return false;
     }

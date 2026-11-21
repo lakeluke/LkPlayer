@@ -87,7 +87,7 @@ Item {
             anchors.left: searchInput.left
             anchors.verticalCenter: parent.verticalCenter
             visible: searchInput.text.length === 0 && !searchInput.activeFocus
-            text: "搜索标题、文件名或目录…"
+            text: "搜索标题、文件名、目录或标签…"
             color: Theme.textMuted
             font.pixelSize: Theme.fontBody
         }

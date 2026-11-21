@@ -189,6 +189,69 @@ Window {
         }
     }
 
+    // ------------------------------------------------ floating fold handles
+    // The playlist / details fold handles float over the video's left and right
+    // edges, above the video layer, so they never take up video space.
+    Rectangle {
+        id: playlistHandle
+        x: App.videoRect.x + 4
+        y: App.videoRect.y + App.videoRect.height / 2 - height / 2
+        width: 18
+        height: 46
+        radius: 9
+        z: 600
+        visible: pageHost.currentPage === "player" && !App.fullscreen && App.videoRect.height > 160
+        color: playlistHandleArea.containsMouse ? Theme.surfaceHover : Theme.glass
+        border.width: 1
+        border.color: App.playlistVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4) : Theme.border
+
+        Text {
+            anchors.centerIn: parent
+            text: App.playlistVisible ? "‹" : "›"
+            color: App.playlistVisible ? Theme.accentSoft : Theme.textSecondary
+            font.pixelSize: 15
+            font.weight: Font.DemiBold
+        }
+
+        MouseArea {
+            id: playlistHandleArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: App.setPlaylistVisible(!App.playlistVisible)
+        }
+    }
+
+    Rectangle {
+        id: detailsHandle
+        x: App.videoRect.x + App.videoRect.width - width - 4
+        y: App.videoRect.y + App.videoRect.height / 2 - height / 2
+        width: 18
+        height: 46
+        radius: 9
+        z: 600
+        visible: pageHost.currentPage === "player" && !App.fullscreen && App.videoRect.height > 160
+        color: detailsHandleArea.containsMouse ? Theme.surfaceHover : Theme.glass
+        border.width: 1
+        border.color: App.detailsVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4) : Theme.border
+
+        Text {
+            anchors.centerIn: parent
+            text: App.detailsVisible ? "›" : "‹"
+            color: App.detailsVisible ? Theme.accentSoft : Theme.textSecondary
+            font.pixelSize: 15
+            font.weight: Font.DemiBold
+        }
+
+        MouseArea {
+            id: detailsHandleArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: App.setDetailsVisible(!App.detailsVisible)
+        }
+    }
+
     Component {
         id: libraryComponent
 

@@ -12,13 +12,18 @@ Item {
     readonly property real position: player ? player.position : 0
     /** False when the system player owns playback: nothing here applies. */
     readonly property bool controllable: player ? player.controllable : true
+    /** Fullscreen uses a dark glass surface over the picture in both themes. */
+    readonly property bool fullscreen: App.fullscreen
+    readonly property color textPrimaryColor: root.fullscreen ? "#E6EDF3" : Theme.textPrimary
+    readonly property color textSecondaryColor: root.fullscreen ? "#8B949E" : Theme.textSecondary
+    readonly property color textMutedColor: root.fullscreen ? "#6E7681" : Theme.textMuted
 
     Rectangle {
         anchors.fill: parent
         radius: Theme.radiusLarge
-        color: Theme.dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(1, 1, 1, 0.8)
+        color: root.fullscreen ? Qt.rgba(8, 10, 16, 0.58) : (Theme.dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(1, 1, 1, 0.8))
         border.width: 1
-        border.color: Theme.border
+        border.color: root.fullscreen ? Qt.rgba(1, 1, 1, 0.12) : Theme.border
     }
 
     Row {
@@ -99,7 +104,7 @@ Item {
                 width: 12
                 height: 12
                 radius: 2
-                color: Theme.textSecondary
+                color: root.textSecondaryColor
             }
 
             MouseArea {
@@ -129,7 +134,7 @@ Item {
                 Text {
                     anchors.centerIn: parent
                     text: modelData < 0 ? "⏪" : "⏩"
-                    color: Theme.textSecondary
+                    color: root.textSecondaryColor
                     font.pixelSize: 15
                 }
 
@@ -179,7 +184,7 @@ Item {
                         const s = root.player ? root.player.speed : 1.0;
                         return (Math.round(s * 100) / 100) + "×";
                     }
-                    color: Theme.textSecondary
+                    color: root.textSecondaryColor
                     font.pixelSize: Theme.fontCaption
                     font.weight: Font.DemiBold
                 }
@@ -300,7 +305,7 @@ Item {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: App.formatDuration(root.position)
-            color: Theme.textPrimary
+            color: root.textPrimaryColor
             font.pixelSize: Theme.fontCaption
             font.weight: Font.DemiBold
         }
@@ -308,14 +313,14 @@ Item {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: "/"
-            color: Theme.textMuted
+            color: root.textMutedColor
             font.pixelSize: Theme.fontCaption
         }
 
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: App.formatDuration(root.duration)
-            color: Theme.textMuted
+            color: root.textMutedColor
             font.pixelSize: Theme.fontCaption
         }
     }
@@ -456,7 +461,7 @@ Item {
             anchors.centerIn: parent
             width: 16
             height: 16
-            property color strokeColor: App.fullscreen ? Theme.accentSoft : Theme.textSecondary
+            property color strokeColor: App.fullscreen ? Theme.accentSoft : root.textSecondaryColor
             onStrokeColorChanged: requestPaint()
             onPaint: {
                 const ctx = getContext("2d");

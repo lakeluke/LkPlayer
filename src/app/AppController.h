@@ -56,6 +56,8 @@ class AppController : public QObject
     Q_PROPERTY(QString currentFolderName READ currentFolderName NOTIFY currentFolderChanged)
     Q_PROPERTY(QVariantList breadcrumb READ breadcrumb NOTIFY breadcrumbChanged)
     Q_PROPERTY(int folderCount READ folderCount NOTIFY folderCountChanged)
+    Q_PROPERTY(bool playlistVisible READ playlistVisible WRITE setPlaylistVisible NOTIFY playlistVisibleChanged)
+    Q_PROPERTY(bool detailsVisible READ detailsVisible WRITE setDetailsVisible NOTIFY detailsVisibleChanged)
 
     Q_PROPERTY(int visibleCount READ visibleCount NOTIFY visibleCountChanged)
     Q_PROPERTY(QStringList selectedTags READ selectedTags WRITE setSelectedTags NOTIFY selectedTagsChanged)
@@ -107,6 +109,8 @@ public:
     QString currentFolderName() const;
     QVariantList breadcrumb() const { return m_breadcrumb; }
     int folderCount() const { return m_folderCount; }
+    bool playlistVisible() const { return m_playlistVisible; }
+    bool detailsVisible() const { return m_detailsVisible; }
 
     int visibleCount() const;
     QStringList selectedTags() const;
@@ -133,6 +137,8 @@ public:
     Q_INVOKABLE void setViewMode(const QString &mode);
     Q_INVOKABLE void setSelectedTags(const QStringList &tags);
     Q_INVOKABLE void setSearchText(const QString &text);
+    Q_INVOKABLE void setPlaylistVisible(bool visible);
+    Q_INVOKABLE void setDetailsVisible(bool visible);
 
 public slots:
     /** Called from QML once the application window exists. */
@@ -204,6 +210,8 @@ signals:
     void currentFolderChanged();
     void breadcrumbChanged();
     void folderCountChanged();
+    void playlistVisibleChanged();
+    void detailsVisibleChanged();
     void visibleCountChanged();
     void selectedTagsChanged();
     void availableTagsChanged();
@@ -270,6 +278,8 @@ private:
     QVariantList m_breadcrumb;
     QVariantMap m_currentItem;
     int m_folderCount = 0;
+    bool m_playlistVisible = false;
+    bool m_detailsVisible = true;
     bool m_scanning = false;
     int m_scannedFiles = 0;
     int m_scannedVideos = 0;

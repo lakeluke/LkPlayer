@@ -255,6 +255,22 @@ void AppController::setSearchText(const QString &text)
     m_mediaModel->setSearchText(text);
 }
 
+void AppController::setPlaylistVisible(bool visible)
+{
+    if (m_playlistVisible == visible)
+        return;
+    m_playlistVisible = visible;
+    emit playlistVisibleChanged();
+}
+
+void AppController::setDetailsVisible(bool visible)
+{
+    if (m_detailsVisible == visible)
+        return;
+    m_detailsVisible = visible;
+    emit detailsVisibleChanged();
+}
+
 void AppController::rescan()
 {
     startScan();

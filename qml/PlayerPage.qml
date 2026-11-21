@@ -7,8 +7,6 @@ Item {
 
     signal backRequested()
 
-    property bool detailsVisible: true
-    property bool playlistVisible: false
     property bool controlsVisible: true
     readonly property string playingPath: App.currentItem && App.currentItem.filePath ? App.currentItem.filePath : ""
 
@@ -148,15 +146,14 @@ Item {
         anchors.bottom: (App.fullscreen && !page.controlsVisible) ? parent.bottom : controls.top
         anchors.bottomMargin: App.fullscreen ? 0 : Theme.spacing
 
-        // The playlist hides behind a slim fold handle on the left edge. The
-        // handle stays outside the video rectangle so it can always be grabbed,
-        // while the panel itself slides in and out.
+        // The playlist panel slides in from the left edge. Its fold handle lives
+        // in Main.qml, floating over the video, so this slot only holds the panel.
         Item {
             id: playlistHolder
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: App.fullscreen ? 0 : (page.playlistVisible ? 334 : 34)
+            width: App.fullscreen ? 0 : (App.playlistVisible ? 300 + Theme.spacing : 0)
             clip: true
 
             Behavior on width {
@@ -166,39 +163,8 @@ Item {
                 }
             }
 
-            // Fold handle
-            Rectangle {
-                id: playlistToggle
-                anchors.left: parent.left
-                anchors.leftMargin: 2
-                anchors.verticalCenter: parent.verticalCenter
-                width: 30
-                height: 64
-                radius: 15
-                color: playlistToggleArea.containsMouse ? Theme.surfaceHover : Theme.glass
-                border.width: 1
-                border.color: page.playlistVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
-
-                Text {
-                    anchors.centerIn: parent
-                    text: page.playlistVisible ? "‹" : "›"
-                    color: page.playlistVisible ? Theme.accentSoft : Theme.textSecondary
-                    font.pixelSize: 20
-                    font.weight: Font.DemiBold
-                }
-
-                MouseArea {
-                    id: playlistToggleArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: page.playlistVisible = !page.playlistVisible
-                }
-            }
-
             Rectangle {
                 anchors.left: parent.left
-                anchors.leftMargin: 34
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: 300
@@ -285,14 +251,14 @@ Item {
             anchors.right: drawerHolder.left
         }
 
-        // The details panel mirrors the playlist: a slim fold handle on the
-        // right edge stays grabbable while the panel slides in and out.
+        // The details panel mirrors the playlist; its fold handle also floats
+        // over the video in Main.qml.
         Item {
             id: drawerHolder
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: App.fullscreen ? 0 : (page.detailsVisible ? 378 : 34)
+            width: App.fullscreen ? 0 : (App.detailsVisible ? 344 + Theme.spacing : 0)
             clip: true
 
             Behavior on width {
@@ -302,44 +268,13 @@ Item {
                 }
             }
 
-            // Fold handle
-            Rectangle {
-                id: detailsToggle
-                anchors.right: parent.right
-                anchors.rightMargin: 2
-                anchors.verticalCenter: parent.verticalCenter
-                width: 30
-                height: 64
-                radius: 15
-                color: detailsToggleArea.containsMouse ? Theme.surfaceHover : Theme.glass
-                border.width: 1
-                border.color: page.detailsVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
-
-                Text {
-                    anchors.centerIn: parent
-                    text: page.detailsVisible ? "›" : "‹"
-                    color: page.detailsVisible ? Theme.accentSoft : Theme.textSecondary
-                    font.pixelSize: 20
-                    font.weight: Font.DemiBold
-                }
-
-                MouseArea {
-                    id: detailsToggleArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: page.detailsVisible = !page.detailsVisible
-                }
-            }
-
             DetailDrawer {
                 anchors.right: parent.right
-                anchors.rightMargin: 34
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: 344
-                visible: page.detailsVisible
-                opacity: page.detailsVisible ? 1 : 0
+                visible: App.detailsVisible
+                opacity: App.detailsVisible ? 1 : 0
 
                 Behavior on opacity {
                     NumberAnimation {
@@ -397,56 +332,52 @@ Item {
         onPositionChanged: page.revealControls()
     }
 
-    // Keyboard shortcuts
-    Item {
-        anchors.fill: parent
-        focus: true
-        Keys.onPressed: event => {
-            switch (event.key) {
-            case Qt.Key_Space:
-                App.togglePlayPause();
-                event.accepted = true;
-                break;
-            case Qt.Key_Escape:
-                if (App.fullscreen)
-                    App.toggleFullscreen();
-                else
-                    page.backRequested();
-                event.accepted = true;
-                break;
-            case Qt.Key_F11:
+    // Keyboard shortcuts. Shortcut is window-scoped by default, so these keep
+    // working no matter which child control currently has focus.
+    Shortcut {
+        sequence: "Space"
+        onActivated: App.togglePlayPause()
+    }
+    Shortcut {
+        sequence: "Esc"
+        onActivated: {
+            if (App.fullscreen)
                 App.toggleFullscreen();
-                event.accepted = true;
-                break;
-            case Qt.Key_Return:
-            case Qt.Key_Enter:
-                App.toggleFullscreen();
-                event.accepted = true;
-                break;
-            case Qt.Key_Left:
-                App.seekRelative(-10);
-                event.accepted = true;
-                break;
-            case Qt.Key_Right:
-                App.seekRelative(10);
-                event.accepted = true;
-                break;
-            case Qt.Key_Up:
-                App.setVolume(Math.min(100, (App.player ? App.player.volume : 100) + 5));
-                event.accepted = true;
-                break;
-            case Qt.Key_Down:
-                App.setVolume(Math.max(0, (App.player ? App.player.volume : 100) - 5));
-                event.accepted = true;
-                break;
-            case Qt.Key_M:
-                App.toggleMute();
-                event.accepted = true;
-                break;
-            default:
-                break;
-            }
+            else
+                page.backRequested();
         }
+    }
+    Shortcut {
+        sequence: "F11"
+        onActivated: App.toggleFullscreen()
+    }
+    Shortcut {
+        sequence: "Return"
+        onActivated: App.toggleFullscreen()
+    }
+    Shortcut {
+        sequence: "Enter"
+        onActivated: App.toggleFullscreen()
+    }
+    Shortcut {
+        sequence: "Left"
+        onActivated: App.seekRelative(-10)
+    }
+    Shortcut {
+        sequence: "Right"
+        onActivated: App.seekRelative(10)
+    }
+    Shortcut {
+        sequence: "Up"
+        onActivated: App.setVolume(Math.min(100, (App.player ? App.player.volume : 100) + 5))
+    }
+    Shortcut {
+        sequence: "Down"
+        onActivated: App.setVolume(Math.max(0, (App.player ? App.player.volume : 100) - 5))
+    }
+    Shortcut {
+        sequence: "M"
+        onActivated: App.toggleMute()
     }
 
     // Keep the current video in view whenever the track changes while the
@@ -454,7 +385,7 @@ Item {
     Connections {
         target: App
         function onCurrentItemChanged() {
-            if (!page.playlistVisible || page.playingPath.length === 0)
+            if (!App.playlistVisible || page.playingPath.length === 0)
                 return;
             const idx = App.allVideos.indexOfPath(page.playingPath);
             if (idx >= 0)

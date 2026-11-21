@@ -58,7 +58,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Theme.radiusLarge
-        color: "#05060A"
+        color: Theme.backgroundDeep
         clip: true
 
         // The picture itself lives in Main.qml: one MpvItem for the whole

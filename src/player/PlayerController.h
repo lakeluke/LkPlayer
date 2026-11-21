@@ -36,6 +36,7 @@ class PlayerController : public QObject
     Q_PROPERTY(double progress READ progress NOTIFY positionChanged)
     Q_PROPERTY(int volume READ volume NOTIFY volumeChanged)
     Q_PROPERTY(bool muted READ muted NOTIFY mutedChanged)
+    Q_PROPERTY(double speed READ speed NOTIFY speedChanged)
     Q_PROPERTY(QString errorText READ errorText NOTIFY errorChanged)
     Q_PROPERTY(bool hasError READ hasError NOTIFY errorChanged)
 
@@ -71,6 +72,7 @@ public:
     double progress() const;
     int volume() const { return m_volume; }
     bool muted() const { return m_muted; }
+    double speed() const { return m_speed; }
     QString errorText() const { return m_errorText; }
     bool hasError() const { return !m_errorText.isEmpty(); }
 
@@ -105,6 +107,7 @@ public slots:
     void setVolume(int volume);
     void setMuted(bool muted);
     void toggleMute();
+    void setSpeed(double speed);
     void setVideoRect(const QRectF &devicePixelRect);
     void setVideoVisible(bool visible);
 
@@ -116,6 +119,7 @@ signals:
     void durationChanged();
     void volumeChanged();
     void mutedChanged();
+    void speedChanged();
     void errorChanged();
 
 protected:
@@ -126,6 +130,7 @@ protected:
     virtual void seekImpl(double seconds) = 0;
     virtual void applyVolumeImpl() = 0;
     virtual void applyMuteImpl() = 0;
+    virtual void applySpeedImpl() {}
     virtual void applyVideoRectImpl() {}
     virtual void applyVideoVisibleImpl() {}
 
@@ -147,6 +152,7 @@ private:
     double m_duration = 0.0;
     int m_volume = 100;
     bool m_muted = false;
+    double m_speed = 1.0;
     QString m_errorText;
     quintptr m_windowHandle = 0;
     QRectF m_videoRect;

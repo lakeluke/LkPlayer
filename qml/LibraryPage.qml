@@ -11,6 +11,20 @@ Item {
 
     property bool sidebarCollapsed: false
 
+    /**
+     * The current folder has subfolders but not a single video of its own, and
+     * no filter is narrowing the grid. The two zones share the page, so the one
+     * that has nothing to show steps aside: the folder strip then takes the
+     * height the video grid would have used instead of leaving a blank block.
+     */
+    readonly property bool foldersOnly: App.viewMode === "drill"
+            && App.libraryRoot.length > 0
+            && !App.scanning
+            && App.visibleCount === 0
+            && App.childFolders.count > 0
+            && App.selectedTags.length === 0
+            && App.searchText.length === 0
+
     TopBar {
         id: topBar
         anchors.top: parent.top
@@ -133,8 +147,11 @@ Item {
             anchors.right: parent.right
             readonly property int stripHeaderHeight: 24
             readonly property int visibleRows: 2
-            height: visible ? stripHeaderHeight
-                    + Math.min(folderGrid.contentHeight, visibleRows * folderGrid.cellHeight) : 0
+            readonly property real naturalHeight: stripHeaderHeight
+                    + Math.min(folderGrid.contentHeight, visibleRows * folderGrid.cellHeight)
+            // With videos underneath the strip keeps its two rows; without any,
+            // it grows into the space the media grid would have occupied.
+            height: !visible ? 0 : (page.foldersOnly ? Math.max(0, content.height - y) : naturalHeight)
             visible: App.viewMode === "drill" && App.childFolders.count > 0
 
             Row {
@@ -188,13 +205,24 @@ Item {
                     onActivated: App.openFolder(model.path)
                 }
             }
+
+            // Only drawn when there really are two zones: with no videos below,
+            // the strip owns the whole height and there is nothing to divide.
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: Theme.border
+                visible: App.visibleCount > 0
+            }
         }
 
         // ------------------------------------------------------- media grid
         Item {
             id: gridArea
             anchors.top: folderStrip.bottom
-            anchors.topMargin: folderStrip.visible ? Theme.spacing : 0
+            anchors.topMargin: folderStrip.visible && App.visibleCount > 0 ? Theme.spacing : 0
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -314,7 +342,10 @@ Item {
 
             EmptyState {
                 anchors.fill: parent
-                visible: App.visibleCount === 0
+                // A folder that only holds subfolders has had them take the page,
+                // so the notice would cover them for no reason. Filters still get
+                // their own message: they narrow the videos, not the folders.
+                visible: App.visibleCount === 0 && !page.foldersOnly
                 icon: App.scanning ? "" : "🎬"
                 busy: App.scanning
                 title: {

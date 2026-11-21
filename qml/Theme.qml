@@ -15,25 +15,28 @@ QtObject {
     readonly property bool dark: mode !== "light"
 
     // ------------------------------------------------------------- colours
-    readonly property color background: dark ? "#0E0F13" : "#F2F3F7"
-    readonly property color backgroundDeep: dark ? "#08090C" : "#E7E9F0"
-    readonly property color surface: dark ? "#16181F" : "#FFFFFF"
-    readonly property color surfaceElevated: dark ? "#1E2029" : "#FFFFFF"
-    readonly property color surfaceHover: dark ? "#262936" : "#EDEFF6"
-    readonly property color border: dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.08)
-    readonly property color borderStrong: dark ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(0, 0, 0, 0.16)
-    readonly property color textPrimary: dark ? "#F5F7FA" : "#14161C"
-    readonly property color textSecondary: dark ? "#A0A6B8" : "#565C6E"
-    readonly property color textMuted: dark ? "#676C7E" : "#878CA0"
-    readonly property color accent: dark ? "#7C5CFF" : "#6A46F5"
-    readonly property color accentSoft: dark ? "#A78BFA" : "#8B6DFF"
-    readonly property color accentDeep: dark ? "#5B3DF5" : "#4A2FD0"
-    readonly property color success: dark ? "#22C55E" : "#16A34A"
-    readonly property color danger: dark ? "#EF4444" : "#DC2626"
-    readonly property color warning: dark ? "#F59E0B" : "#D97706"
+    //
+    // Palette follows the GitHub theme family from VS Code (GitHub Dark /
+    // GitHub Light), mapped onto the Primer design tokens the theme ships with.
+    readonly property color background: dark ? "#0D1117" : "#FFFFFF"
+    readonly property color backgroundDeep: dark ? "#010409" : "#F6F8FA"
+    readonly property color surface: dark ? "#161B22" : "#F6F8FA"
+    readonly property color surfaceElevated: dark ? "#1C2128" : "#FFFFFF"
+    readonly property color surfaceHover: dark ? "#30363D" : "#EFF2F5"
+    readonly property color border: dark ? "#30363D" : "#D0D7DE"
+    readonly property color borderStrong: dark ? "#484F58" : "#AFB8C1"
+    readonly property color textPrimary: dark ? "#E6EDF3" : "#1F2328"
+    readonly property color textSecondary: dark ? "#8B949E" : "#656D76"
+    readonly property color textMuted: dark ? "#6E7681" : "#818B98"
+    readonly property color accent: dark ? "#4493F8" : "#0969DA"
+    readonly property color accentSoft: dark ? "#79C0FF" : "#54AEFF"
+    readonly property color accentDeep: dark ? "#1F6FEB" : "#0550AE"
+    readonly property color success: dark ? "#3FB950" : "#1A7F37"
+    readonly property color danger: dark ? "#F85149" : "#CF222E"
+    readonly property color warning: dark ? "#D29922" : "#9A6700"
 
-    readonly property color glass: dark ? Qt.rgba(1, 1, 1, 0.045) : Qt.rgba(1, 1, 1, 0.75)
-    readonly property color glassStrong: dark ? Qt.rgba(1, 1, 1, 0.075) : Qt.rgba(1, 1, 1, 0.92)
+    readonly property color glass: dark ? Qt.rgba(255, 255, 255, 0.05) : Qt.rgba(255, 255, 255, 0.75)
+    readonly property color glassStrong: dark ? Qt.rgba(255, 255, 255, 0.08) : Qt.rgba(255, 255, 255, 0.92)
     readonly property color scrim: Qt.rgba(0, 0, 0, dark ? 0.55 : 0.35)
 
     // Text colour that stays readable on top of the accent gradient.

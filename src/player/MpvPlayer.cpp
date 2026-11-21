@@ -82,6 +82,7 @@ void MpvPlayer::startPlayback(const QString &filePath, double startSeconds)
     // is showing has to be pushed again before a new file starts.
     m_engine->setVolume(volume());
     m_engine->setMuted(muted());
+    m_engine->setSpeed(speed());
     m_engine->setPaused(false);
 
     m_pendingFilePath = filePath;
@@ -143,4 +144,10 @@ void MpvPlayer::applyMuteImpl()
 {
     if (m_engine)
         m_engine->setMuted(muted());
+}
+
+void MpvPlayer::applySpeedImpl()
+{
+    if (m_engine)
+        m_engine->setSpeed(speed());
 }

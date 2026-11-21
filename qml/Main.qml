@@ -39,7 +39,7 @@ Window {
         gradient: Gradient {
             GradientStop {
                 position: 0.0
-                color: Theme.dark ? "#12141D" : "#FFFFFF"
+                color: Theme.dark ? Theme.surface : "#FFFFFF"
             }
             GradientStop {
                 position: 0.42
@@ -47,7 +47,7 @@ Window {
             }
             GradientStop {
                 position: 1.0
-                color: Theme.dark ? "#0A0B10" : "#EEF0F6"
+                color: Theme.backgroundDeep
             }
         }
     }
@@ -178,6 +178,14 @@ Window {
                 duration: 180
                 easing: Easing.OutCubic
             }
+        }
+
+        // Double-click toggles fullscreen. Only the double-click is acted on; a
+        // single click has nothing else to consume it.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton
+            onDoubleClicked: App.toggleFullscreen()
         }
     }
 

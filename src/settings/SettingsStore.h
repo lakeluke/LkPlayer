@@ -20,6 +20,7 @@ class SettingsStore : public QObject
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
     Q_PROPERTY(QString lastFolder READ lastFolder WRITE setLastFolder NOTIFY lastFolderChanged)
+    Q_PROPERTY(bool generateCovers READ generateCovers WRITE setGenerateCovers NOTIFY generateCoversChanged)
     Q_PROPERTY(bool toolsValid READ toolsValid NOTIFY toolsValidChanged)
     Q_PROPERTY(QString toolsStatus READ toolsStatus NOTIFY toolsValidChanged)
     Q_PROPERTY(QString configFilePath READ configFilePath CONSTANT)
@@ -51,6 +52,10 @@ public:
     QString lastFolder() const { return m_lastFolder; }
     void setLastFolder(const QString &folder);
 
+    /** Whether video frames may be extracted into cover thumbnails. */
+    bool generateCovers() const { return m_generateCovers; }
+    void setGenerateCovers(bool enabled);
+
     bool toolsValid() const { return m_toolsValid; }
     QString toolsStatus() const { return m_toolsStatus; }
     QString configFilePath() const { return m_configFilePath; }
@@ -71,6 +76,7 @@ signals:
     void themeModeChanged();
     void viewModeChanged();
     void lastFolderChanged();
+    void generateCoversChanged();
     void toolsValidChanged();
 
 private:
@@ -82,6 +88,7 @@ private:
     QString m_themeMode = QStringLiteral("dark");
     QString m_viewMode = QStringLiteral("flat");
     QString m_lastFolder;
+    bool m_generateCovers = true;
     bool m_toolsValid = false;
     QString m_toolsStatus;
     QString m_configFilePath;

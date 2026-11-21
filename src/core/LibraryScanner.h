@@ -88,6 +88,8 @@ private:
     FolderNodeList folderList() const;
     void flushItems(bool force);
     void emitProgress(bool force);
+    /** Publishes the structure grown so far, throttled (fresh scans only). */
+    void maybeEmitStructure();
 
     QString m_root;
     QString m_indexFile;
@@ -110,4 +112,5 @@ private:
     int m_videoCount = 0;
     qint64 m_lastEmitMs = 0;
     qint64 m_lastProgressMs = 0;
+    qint64 m_lastStructureMs = 0;
 };

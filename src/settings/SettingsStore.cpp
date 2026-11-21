@@ -18,6 +18,7 @@ const QString kPlayMode = QStringLiteral("player/mode");
 const QString kThemeMode = QStringLiteral("ui/theme");
 const QString kViewMode = QStringLiteral("ui/viewMode");
 const QString kLastFolder = QStringLiteral("ui/lastFolder");
+const QString kGenerateCovers = QStringLiteral("thumbnails/generate");
 
 bool isPlayMode(const QString &mode)
 {
@@ -55,6 +56,8 @@ void SettingsStore::load()
 
     m_lastFolder = settings.value(kLastFolder).toString();
 
+    m_generateCovers = settings.value(kGenerateCovers, true).toBool();
+
     qCInfo(lcSettings) << "settings loaded from" << m_configFilePath;
 
     emit libraryRootChanged();
@@ -63,6 +66,7 @@ void SettingsStore::load()
     emit themeModeChanged();
     emit viewModeChanged();
     emit lastFolderChanged();
+    emit generateCoversChanged();
     revalidate();
 }
 
@@ -75,6 +79,7 @@ void SettingsStore::sync()
     settings.setValue(kThemeMode, m_themeMode);
     settings.setValue(kViewMode, m_viewMode);
     settings.setValue(kLastFolder, m_lastFolder);
+    settings.setValue(kGenerateCovers, m_generateCovers);
     settings.sync();
 
     if (settings.status() != QSettings::NoError)
@@ -139,6 +144,15 @@ void SettingsStore::setLastFolder(const QString &folder)
         return;
     m_lastFolder = cleaned;
     emit lastFolderChanged();
+    sync();
+}
+
+void SettingsStore::setGenerateCovers(bool enabled)
+{
+    if (enabled == m_generateCovers)
+        return;
+    m_generateCovers = enabled;
+    emit generateCoversChanged();
     sync();
 }
 

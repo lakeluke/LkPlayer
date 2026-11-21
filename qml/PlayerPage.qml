@@ -8,13 +8,15 @@ Item {
     signal backRequested()
 
     property bool detailsVisible: true
+    property bool playlistVisible: false
+    readonly property string playingPath: App.currentItem && App.currentItem.filePath ? App.currentItem.filePath : ""
 
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
             GradientStop {
                 position: 0.0
-                color: Theme.dark ? "#0B0C11" : "#F6F7FB"
+                color: Theme.dark ? Theme.backgroundDeep : "#F6F8FA"
             }
             GradientStop {
                 position: 1.0
@@ -120,6 +122,29 @@ Item {
 
             Rectangle {
                 height: 32
+                width: playlistText.implicitWidth + 34
+                radius: 16
+                color: page.playlistVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
+                border.width: 1
+                border.color: page.playlistVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
+
+                Text {
+                    id: playlistText
+                    anchors.centerIn: parent
+                    text: "播放列表"
+                    color: page.playlistVisible ? Theme.accentSoft : Theme.textSecondary
+                    font.pixelSize: Theme.fontCaption
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.playlistVisible = !page.playlistVisible
+                }
+            }
+
+            Rectangle {
+                height: 32
                 width: detailsText.implicitWidth + 34
                 radius: 16
                 color: page.detailsVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
@@ -140,6 +165,29 @@ Item {
                     onClicked: page.detailsVisible = !page.detailsVisible
                 }
             }
+
+            Rectangle {
+                height: 32
+                width: fullscreenText.implicitWidth + 34
+                radius: 16
+                color: App.fullscreen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
+                border.width: 1
+                border.color: App.fullscreen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
+
+                Text {
+                    id: fullscreenText
+                    anchors.centerIn: parent
+                    text: App.fullscreen ? "退出全屏" : "全屏"
+                    color: App.fullscreen ? Theme.accentSoft : Theme.textSecondary
+                    font.pixelSize: Theme.fontCaption
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: App.toggleFullscreen()
+                }
+            }
         }
     }
 
@@ -158,9 +206,106 @@ Item {
         anchors.bottom: controls.top
         anchors.bottomMargin: Theme.spacing
 
+        // Collapses to zero width when hidden, exactly like the details panel:
+        // the video surface then expands into the freed space.
+        Item {
+            id: playlistHolder
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: page.playlistVisible ? 300 + Theme.spacing : 0
+            clip: true
+
+            Behavior on width {
+                NumberAnimation {
+                    duration: Theme.durationNormal
+                    easing: Theme.easingStandard
+                }
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                width: 300
+                radius: Theme.radiusLarge
+                color: Theme.dark ? Qt.rgba(1, 1, 1, 0.03) : Qt.rgba(1, 1, 1, 0.85)
+                border.width: 1
+                border.color: Theme.border
+                clip: true
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: Theme.spacingSmall
+
+                    Text {
+                        width: parent.width
+                        text: "播放列表 · " + App.allVideos.count + " 个视频"
+                        color: Theme.textPrimary
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+
+                    ListView {
+                        id: playlistView
+                        anchors.top: parent.top
+                        anchors.topMargin: 24
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        clip: true
+                        spacing: 6
+                        model: App.allVideos
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        delegate: Rectangle {
+                            width: playlistView.width
+                            height: 46
+                            radius: Theme.radiusMedium
+                            color: model.filePath === page.playingPath
+                                   ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
+                                   : (itemMouse.containsMouse ? Theme.surfaceHover : "transparent")
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 12
+                                anchors.right: durationLabel.left
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: model.title
+                                color: model.filePath === page.playingPath ? Theme.accentSoft : Theme.textPrimary
+                                font.pixelSize: Theme.fontCaption
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                id: durationLabel
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: model.durationText
+                                color: Theme.textMuted
+                                font.pixelSize: 10
+                            }
+
+                            MouseArea {
+                                id: itemMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: App.playItem(model.filePath)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         VideoSurface {
             id: surface
-            anchors.left: parent.left
+            anchors.left: playlistHolder.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.right: drawerHolder.left
@@ -222,7 +367,10 @@ Item {
                 event.accepted = true;
                 break;
             case Qt.Key_Escape:
-                page.backRequested();
+                if (App.fullscreen)
+                    App.toggleFullscreen();
+                else
+                    page.backRequested();
                 event.accepted = true;
                 break;
             case Qt.Key_Left:
@@ -248,6 +396,19 @@ Item {
             default:
                 break;
             }
+        }
+    }
+
+    // Keep the current video in view whenever the track changes while the
+    // playlist is open.
+    Connections {
+        target: App
+        function onCurrentItemChanged() {
+            if (!page.playlistVisible || page.playingPath.length === 0)
+                return;
+            const idx = App.allVideos.indexOfPath(page.playingPath);
+            if (idx >= 0)
+                playlistView.positionViewAtIndex(idx, ListView.Contain);
         }
     }
 

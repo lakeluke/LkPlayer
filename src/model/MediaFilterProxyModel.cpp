@@ -108,6 +108,13 @@ bool MediaFilterProxyModel::rowInScope(int sourceRow) const
 {
     if (m_viewMode != QLatin1String("drill"))
         return true;
+
+    // Before the folder tree has arrived (a fresh library is still scanning)
+    // there is no folder to narrow to; showing everything is strictly better
+    // than an empty grid the user has to wait out.
+    if (m_currentFolder.isEmpty())
+        return true;
+
     MediaItemModel *model = sourceItemModel();
     if (!model)
         return true;

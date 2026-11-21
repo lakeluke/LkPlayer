@@ -59,7 +59,8 @@ public:
     void replaceFolder(const QString &folderPath, const MediaItemList &items);
 
     const MediaItem *itemAt(int row) const;
-    int indexOfPath(const QString &filePath) const;
+    /** Row of `filePath`, or -1. Lets the playlist scroll to the current video. */
+    Q_INVOKABLE int indexOfPath(const QString &filePath) const;
 
     Q_INVOKABLE QVariantMap item(int row) const;
 

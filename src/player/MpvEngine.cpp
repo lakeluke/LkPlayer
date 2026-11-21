@@ -207,6 +207,13 @@ void MpvEngine::setMuted(bool muted)
     setFlag(m_mpv, "mute", muted);
 }
 
+void MpvEngine::setSpeed(double factor)
+{
+    if (!m_mpv)
+        return;
+    setDouble(m_mpv, "speed", qBound(0.25, factor, 4.0));
+}
+
 void MpvEngine::drainEvents()
 {
     if (!m_mpv)

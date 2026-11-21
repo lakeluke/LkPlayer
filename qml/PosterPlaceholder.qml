@@ -13,11 +13,11 @@ Item {
         gradient: Gradient {
             GradientStop {
                 position: 0.0
-                color: Theme.dark ? "#1B1D26" : "#E9EBF2"
+                color: Theme.dark ? Theme.surfaceElevated : "#EFF2F5"
             }
             GradientStop {
                 position: 1.0
-                color: Theme.dark ? "#12141A" : "#DDE0EA"
+                color: Theme.dark ? Theme.surface : "#E1E4E8"
             }
         }
     }

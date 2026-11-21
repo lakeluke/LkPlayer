@@ -103,6 +103,7 @@ AppController::AppController(QObject *parent)
     connect(m_player, &PlayerController::errorChanged, this, &AppController::playerChanged);
 
     m_thumbService->setFfmpegPath(m_settings->ffmpegPath());
+    m_thumbService->setGenerationEnabled(m_settings->generateCovers());
     m_thumbCache->prune();
 
     // Periodic, very cheap re-check: only directory timestamps are compared, so
@@ -136,6 +137,9 @@ void AppController::wireSettings()
     });
     connect(m_settings, &SettingsStore::playModeChanged, this, &AppController::rebuildPlayer);
     connect(m_settings, &SettingsStore::toolsValidChanged, this, &AppController::refreshToolError);
+    connect(m_settings, &SettingsStore::generateCoversChanged, this, [this]() {
+        m_thumbService->setGenerationEnabled(m_settings->generateCovers());
+    });
     connect(m_settings, &SettingsStore::viewModeChanged, this, [this]() {
         const QString mode = m_settings->viewMode();
         if (mode == m_viewMode)
@@ -690,6 +694,29 @@ void AppController::toggleMute()
 {
     if (auto *backend = controllablePlayer())
         backend->toggleMute();
+}
+
+void AppController::setSpeed(double speed)
+{
+    if (auto *backend = controllablePlayer())
+        backend->setSpeed(speed);
+}
+
+void AppController::toggleFullscreen()
+{
+    if (!m_window)
+        return;
+
+    const bool enterFullscreen = m_window->visibility() != QWindow::FullScreen;
+    if (enterFullscreen)
+        m_window->showFullScreen();
+    else
+        m_window->showNormal();
+
+    if (enterFullscreen != m_fullscreen) {
+        m_fullscreen = enterFullscreen;
+        emit fullscreenChanged();
+    }
 }
 
 void AppController::setVideoRect(qreal x, qreal y, qreal width, qreal height)

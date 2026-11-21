@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <QCache>
 #include <QImage>
 #include <QMutex>
@@ -34,6 +36,13 @@ public:
     void setFfmpegPath(const QString &path);
     QString ffmpegPath() const { return m_ffmpegPath; }
 
+    /**
+     * Toggles video-frame cover extraction. When disabled, sidecar posters and
+     * already-cached covers keep working, but no new ffmpeg jobs are scheduled.
+     */
+    void setGenerationEnabled(bool enabled);
+    bool generationEnabled() const { return m_generationEnabled.load(std::memory_order_relaxed); }
+
     ThumbnailCache *cache() const { return m_cache; }
 
     /** Thread safe. Returns the best image available right now. */
@@ -65,4 +74,5 @@ private:
     mutable QSet<QString> m_pending;
     mutable QSet<QString> m_failed;
     QImage m_stub;
+    std::atomic<bool> m_generationEnabled{true};
 };

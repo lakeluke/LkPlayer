@@ -15,7 +15,7 @@ Item {
         gradient: Gradient {
             GradientStop {
                 position: 0.0
-                color: Theme.dark ? "#0B0C11" : "#F6F7FB"
+                color: Theme.dark ? Theme.backgroundDeep : "#F6F8FA"
             }
             GradientStop {
                 position: 1.0
@@ -620,7 +620,7 @@ Item {
 
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: App.thumbnails.cacheCount + " 个文件 · " + (App.thumbnails.cacheBytes() / 1048576).toFixed(1) + " MB"
+                                text: App.thumbnails.cacheCount() + " 个文件 · " + (App.thumbnails.cacheBytes() / 1048576).toFixed(1) + " MB"
                                 color: Theme.textSecondary
                                 font.pixelSize: Theme.fontCaption
                             }
@@ -647,6 +647,65 @@ Item {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: App.clearThumbnailCache()
+                                }
+                            }
+                        }
+
+                        Row {
+                            width: parent.width
+                            spacing: Theme.spacing
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 120
+                                text: "自动生成封面"
+                                color: Theme.textPrimary
+                                font.pixelSize: Theme.fontBody
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: App.settings.generateCovers
+                                      ? "扫描后按需抽取视频画面"
+                                      : "已关闭 — 仅显示海报与已缓存封面"
+                                color: Theme.textSecondary
+                                font.pixelSize: Theme.fontCaption
+                            }
+
+                            Rectangle {
+                                id: coverToggle
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 44
+                                height: 24
+                                radius: 12
+                                color: App.settings.generateCovers ? Theme.accent : Theme.border
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: Theme.durationFast
+                                    }
+                                }
+
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 18
+                                    height: 18
+                                    radius: 9
+                                    color: "#FFFFFF"
+                                    x: App.settings.generateCovers ? parent.width - width - 3 : 3
+
+                                    Behavior on x {
+                                        NumberAnimation {
+                                            duration: Theme.durationFast
+                                            easing: Easing.OutCubic
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: App.settings.generateCovers = !App.settings.generateCovers
                                 }
                             }
                         }

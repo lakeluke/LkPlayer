@@ -16,6 +16,7 @@ namespace {
 constexpr int kBatchSize = 48;
 constexpr qint64 kBatchIntervalMs = 150;
 constexpr qint64 kProgressIntervalMs = 120;
+constexpr qint64 kStructureIntervalMs = 700;
 constexpr int kMaxDepth = 24;
 
 QString modeName(LibraryScanner::Mode mode)
@@ -145,6 +146,7 @@ void LibraryScanner::startWithMode(Mode mode)
     m_videoCount = 0;
     m_lastEmitMs = QDateTime::currentMSecsSinceEpoch();
     m_lastProgressMs = m_lastEmitMs;
+    m_lastStructureMs = 0;
 
     // Worker state is created inside the worker thread to avoid sharing.
     m_running = true;
@@ -402,6 +404,23 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
     m_index.insert(snapshot);
     m_indexDirty = true;
 
+    // During a fresh scan the folder tree is published as it grows: named
+    // placeholder nodes give the sidebar something to render before the child
+    // is actually read, so the user can already see and open folders instead of
+    // staring at an empty page until the whole (possibly slow) walk finishes.
+    if (!m_deltaMode && !isBackground()) {
+        for (const QString &child : childDirs) {
+            if (!m_folders.contains(child)) {
+                FolderNode placeholder;
+                placeholder.path = child;
+                placeholder.name = QFileInfo(child).fileName();
+                placeholder.depth = depth + 1;
+                m_folders.insert(child, placeholder);
+            }
+        }
+        maybeEmitStructure();
+    }
+
     if (m_deltaMode) {
         // The model may still hold the previous version of this folder.
         emit folderItemsChanged(absPath, ownItems);
@@ -460,4 +479,16 @@ void LibraryScanner::emitProgress(bool force)
         return;
     m_lastProgressMs = now;
     emit progressChanged(m_scannedFiles, m_videoCount, m_rootAbsolute);
+}
+
+void LibraryScanner::maybeEmitStructure()
+{
+    if (isBackground() || m_deltaMode)
+        return;
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_lastStructureMs < kStructureIntervalMs)
+        return;
+    m_lastStructureMs = now;
+    emit structureReady(folderList());
 }

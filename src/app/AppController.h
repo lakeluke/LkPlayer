@@ -14,12 +14,12 @@
 // meta object code.
 #include "model/FolderListModel.h"
 #include "model/MediaFilterProxyModel.h"
+#include "model/MediaItemModel.h"
 #include "player/PlayerController.h"
 #include "settings/SettingsStore.h"
 #include "thumb/ThumbnailService.h"
 
 class LibraryScanner;
-class MediaItemModel;
 class MpvEngine;
 class ThumbnailCache;
 class QQuickWindow;
@@ -36,6 +36,8 @@ class AppController : public QObject
 
     Q_PROPERTY(SettingsStore *settings READ settings CONSTANT)
     Q_PROPERTY(MediaFilterProxyModel *mediaModel READ mediaModel CONSTANT)
+    /** Flat list of every video in the library, unfiltered (the playlist). */
+    Q_PROPERTY(MediaItemModel *allVideos READ allVideos CONSTANT)
     Q_PROPERTY(FolderListModel *childFolders READ childFolders CONSTANT)
     Q_PROPERTY(PlayerController *player READ player NOTIFY playerChanged)
     Q_PROPERTY(ThumbnailService *thumbnails READ thumbnails CONSTANT)
@@ -73,6 +75,7 @@ class AppController : public QObject
      */
     Q_PROPERTY(QRectF videoRect READ videoRect NOTIFY videoRectChanged)
     Q_PROPERTY(bool videoVisible READ videoVisible NOTIFY videoVisibleChanged)
+    Q_PROPERTY(bool fullscreen READ isFullscreen NOTIFY fullscreenChanged)
 
     // Platform capabilities / packaging mode, both fixed for a given build.
     Q_PROPERTY(bool embeddedSupported READ embeddedSupported CONSTANT)
@@ -85,6 +88,7 @@ public:
 
     SettingsStore *settings() const { return m_settings; }
     MediaFilterProxyModel *mediaModel() const { return m_mediaModel; }
+    MediaItemModel *allVideos() const { return m_itemModel; }
     FolderListModel *childFolders() const { return m_childFolders; }
     PlayerController *player() const { return m_player; }
     ThumbnailService *thumbnails() const { return m_thumbService; }
@@ -114,6 +118,7 @@ public:
 
     QRectF videoRect() const { return m_videoRectDip; }
     bool videoVisible() const { return m_videoVisible; }
+    bool isFullscreen() const { return m_fullscreen; }
 
     /** False where ffplay cannot be hosted inside our own window (Linux). */
     bool embeddedSupported() const;
@@ -155,6 +160,8 @@ public slots:
 
     void setVideoRect(qreal x, qreal y, qreal width, qreal height);
     void setVideoVisible(bool visible);
+    void setSpeed(double speed);
+    void toggleFullscreen();
 
     void setToolDirectory(const QString &dir);
     void setPlayMode(const QString &mode);
@@ -180,6 +187,7 @@ signals:
     void playerChanged();
     void videoRectChanged();
     void videoVisibleChanged();
+    void fullscreenChanged();
     void libraryRootChanged();
     void scanningChanged();
     void progressChanged();
@@ -238,6 +246,7 @@ private:
     quintptr m_windowHandle = 0;
     QRectF m_videoRectDip;
     bool m_videoVisible = false;
+    bool m_fullscreen = false;
 
     /** Drives the cheap background re-check of the library. */
     QTimer *m_verifyTimer = nullptr;

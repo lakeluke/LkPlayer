@@ -55,6 +55,7 @@ public:
     void seekAbsolute(double seconds);
     void setVolume(int percent);
     void setMuted(bool muted);
+    void setSpeed(double factor);
 
 signals:
     void positionChanged(double seconds);

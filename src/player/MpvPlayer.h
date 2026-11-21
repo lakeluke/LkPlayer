@@ -38,6 +38,7 @@ protected:
     void seekImpl(double seconds) override;
     void applyVolumeImpl() override;
     void applyMuteImpl() override;
+    void applySpeedImpl() override;
 
 private:
     /** Hands the queued file to mpv; runs once the render context is live. */

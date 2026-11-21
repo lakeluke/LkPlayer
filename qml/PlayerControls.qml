@@ -143,6 +143,56 @@ Item {
                 }
             }
         }
+
+        // Playback speed: cycles through the presets on each click.
+        Item {
+            id: speedControl
+            anchors.verticalCenter: parent.verticalCenter
+            width: speedChip.width
+            height: 40
+
+            readonly property var steps: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+
+            function nextSpeed() {
+                const current = root.player ? root.player.speed : 1.0;
+                let idx = steps.findIndex(s => Math.abs(s - current) < 0.001);
+                if (idx < 0)
+                    idx = steps.indexOf(1.0);
+                return steps[(idx + 1) % steps.length];
+            }
+
+            Rectangle {
+                id: speedChip
+                anchors.verticalCenter: parent.verticalCenter
+                width: 46
+                height: 40
+                radius: 20
+                color: speedArea.containsMouse ? Theme.surfaceHover : Theme.glass
+                border.width: 1
+                border.color: Theme.border
+                opacity: !root.controllable ? 0.3 : (root.active ? 1.0 : 0.5)
+                enabled: root.controllable
+
+                Text {
+                    anchors.centerIn: parent
+                    text: {
+                        const s = root.player ? root.player.speed : 1.0;
+                        return (Math.round(s * 100) / 100) + "×";
+                    }
+                    color: Theme.textSecondary
+                    font.pixelSize: Theme.fontCaption
+                    font.weight: Font.DemiBold
+                }
+            }
+
+            MouseArea {
+                id: speedArea
+                anchors.fill: speedChip
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: App.setSpeed(speedControl.nextSpeed())
+            }
+        }
     }
 
     // ------------------------------------------------------------- progress

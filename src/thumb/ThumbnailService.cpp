@@ -134,6 +134,19 @@ void ThumbnailService::setFfmpegPath(const QString &path)
     m_failed.clear();
 }
 
+void ThumbnailService::setGenerationEnabled(bool enabled)
+{
+    m_generationEnabled.store(enabled, std::memory_order_relaxed);
+    if (!enabled) {
+        // Jobs already running will finish and have their result dropped by
+        // completeGeneration(); queued ones never start because lookup() and
+        // requestGeneration() both bail out while the flag is off.
+        QMutexLocker locker(&m_mutex);
+        m_pending.clear();
+    }
+    emit pendingCountChanged();
+}
+
 int ThumbnailService::pendingCount() const
 {
     QMutexLocker locker(&m_mutex);
@@ -165,6 +178,10 @@ QImage ThumbnailService::lookup(const QString &videoPath, bool *needsGeneration)
         }
     }
 
+    // Extraction is switched off: only poster files and cached covers remain.
+    if (!m_generationEnabled.load(std::memory_order_relaxed))
+        return m_stub;
+
     {
         QMutexLocker locker(&m_mutex);
         if (m_pending.contains(videoPath))
@@ -182,6 +199,9 @@ void ThumbnailService::requestGeneration(const QString &videoPath)
     if (videoPath.isEmpty())
         return;
 
+    if (!m_generationEnabled.load(std::memory_order_relaxed))
+        return;
+
     if (m_ffmpegPath.isEmpty() || !QFileInfo::exists(m_ffmpegPath)) {
         qCDebug(lcThumb) << "no usable ffmpeg, skipping cover for" << videoPath;
         QMutexLocker locker(&m_mutex);
@@ -196,6 +216,15 @@ void ThumbnailService::requestGeneration(const QString &videoPath)
 
 void ThumbnailService::completeGeneration(const QString &videoPath, const QImage &image)
 {
+    // The user switched extraction off while this job was running: drop the
+    // result instead of writing a cover they asked not to generate.
+    if (!m_generationEnabled.load(std::memory_order_relaxed)) {
+        QMutexLocker locker(&m_mutex);
+        m_pending.remove(videoPath);
+        emit pendingCountChanged();
+        return;
+    }
+
     {
         QMutexLocker locker(&m_mutex);
         m_pending.remove(videoPath);

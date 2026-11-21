@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import LkPlayer
 
 // Main browsing surface: whole library in one grid, or folder by folder.
@@ -10,6 +11,7 @@ Item {
     signal playRequested()
 
     property bool sidebarCollapsed: false
+    property string contextFilePath: ""
 
     /**
      * The current folder has subfolders but not a single video of its own, and
@@ -267,6 +269,10 @@ Item {
                     }
 
                     onActivated: App.playItem(model.filePath)
+                    onContextMenuRequested: {
+                        page.contextFilePath = model.filePath;
+                        cardMenu.popup();
+                    }
                 }
             }
 
@@ -383,5 +389,162 @@ Item {
         anchors.bottom: parent.bottom
         anchors.margins: Theme.spacingLarge
         onExpandRequested: page.playRequested()
+    }
+
+    // ------------------------------------------------------------ context menu
+    Menu {
+        id: cardMenu
+
+        MenuItem {
+            text: "在资源管理器中打开"
+            onTriggered: App.revealInFileManager(page.contextFilePath)
+        }
+
+        MenuItem {
+            text: "删除"
+            onTriggered: deleteDialog.openFor(page.contextFilePath)
+        }
+    }
+
+    // -------------------------------------------------- delete confirmation
+    Popup {
+        id: deleteDialog
+        anchors.centerIn: parent
+        width: 480
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        padding: Theme.spacingLarge
+
+        property bool deleteFolder: false
+        property var targets: []
+        property string path: ""
+
+        function openFor(filePath) {
+            const preview = App.deletePreview(filePath);
+            deleteFolder = preview.deleteFolder;
+            targets = preview.targets;
+            path = filePath;
+            open();
+        }
+
+        background: Rectangle {
+            radius: Theme.radiusLarge
+            color: Theme.surfaceElevated
+            border.width: 1
+            border.color: Theme.borderStrong
+        }
+
+        contentItem: Column {
+            spacing: Theme.spacing
+
+            Text {
+                width: parent.width
+                text: "确认删除"
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontSubtitle
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                width: parent.width
+                text: deleteDialog.deleteFolder
+                      ? "该文件夹只包含这个视频及其关联信息（海报、nfo、字幕、剧照），将删除整个文件夹："
+                      : "将删除以下视频文件："
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontBody
+                wrapMode: Text.WordWrap
+                lineHeight: 1.4
+            }
+
+            Rectangle {
+                width: parent.width
+                height: Math.max(48, Math.min(150, deleteTargetsColumn.implicitHeight + 20))
+                radius: Theme.radiusMedium
+                color: Theme.dark ? Qt.rgba(0, 0, 0, 0.25) : Qt.rgba(0, 0, 0, 0.04)
+                border.width: 1
+                border.color: Theme.border
+                clip: true
+
+                Column {
+                    id: deleteTargetsColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.margins: 10
+                    spacing: 5
+
+                    Repeater {
+                        model: deleteDialog.targets
+
+                        delegate: Text {
+                            width: deleteTargetsColumn.width
+                            text: "• " + modelData
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.fontCaption
+                            elide: Text.ElideMiddle
+                        }
+                    }
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: "此操作无法撤销。"
+                color: Theme.danger
+                font.pixelSize: Theme.fontCaption
+            }
+
+            Row {
+                anchors.right: parent.right
+                spacing: Theme.spacingSmall
+
+                Rectangle {
+                    width: 88
+                    height: 36
+                    radius: 18
+                    color: Theme.glass
+                    border.width: 1
+                    border.color: Theme.border
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "取消"
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontBody
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: deleteDialog.close()
+                    }
+                }
+
+                Rectangle {
+                    width: 88
+                    height: 36
+                    radius: 18
+                    color: Theme.danger
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "删除"
+                        color: "#FFFFFF"
+                        font.pixelSize: Theme.fontBody
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            deleteDialog.close();
+                            App.deleteItem(deleteDialog.path);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

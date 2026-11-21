@@ -49,8 +49,8 @@ QIcon buildAppIcon()
     painter.fillPath(squircle, background);
 
     QLinearGradient accent(0, 0, kSize, kSize);
-    accent.setColorAt(0.0, QColor(QStringLiteral("#A78BFA")));
-    accent.setColorAt(1.0, QColor(QStringLiteral("#5B3DF5")));
+    accent.setColorAt(0.0, QColor(QStringLiteral("#6EE7B7")));
+    accent.setColorAt(1.0, QColor(QStringLiteral("#059669")));
 
     painter.setPen(QPen(accent, 12));
     painter.setBrush(Qt::NoBrush);

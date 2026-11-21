@@ -12,7 +12,7 @@ namespace {
 
 // Bump the version whenever the layout below changes; older files are ignored.
 constexpr quint32 kMagic = 0x4C4B4958; // "LKIX"
-constexpr quint32 kVersion = 2;
+constexpr quint32 kVersion = 3;
 
 void writeTags(QDataStream &stream, const QHash<QString, int> &tags)
 {

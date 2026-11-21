@@ -9,7 +9,16 @@ Item {
 
     property bool detailsVisible: true
     property bool playlistVisible: false
+    property bool controlsVisible: true
     readonly property string playingPath: App.currentItem && App.currentItem.filePath ? App.currentItem.filePath : ""
+
+    // Fullscreen auto-hide: bring the transport bar back and restart the timer.
+    function revealControls() {
+        if (!App.fullscreen)
+            return;
+        page.controlsVisible = true;
+        hideControlsTimer.restart();
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -33,6 +42,7 @@ Item {
         anchors.right: parent.right
         anchors.margins: Theme.spacingLarge
         height: 46
+        visible: !App.fullscreen
 
         Row {
             anchors.left: parent.left
@@ -122,29 +132,6 @@ Item {
 
             Rectangle {
                 height: 32
-                width: playlistText.implicitWidth + 34
-                radius: 16
-                color: page.playlistVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
-                border.width: 1
-                border.color: page.playlistVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
-
-                Text {
-                    id: playlistText
-                    anchors.centerIn: parent
-                    text: "播放列表"
-                    color: page.playlistVisible ? Theme.accentSoft : Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: page.playlistVisible = !page.playlistVisible
-                }
-            }
-
-            Rectangle {
-                height: 32
                 width: detailsText.implicitWidth + 34
                 radius: 16
                 color: page.detailsVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18) : Theme.glass
@@ -197,23 +184,24 @@ Item {
     // metadata panel always lets it fill the stage.
     Item {
         id: stage
-        anchors.top: header.bottom
-        anchors.topMargin: Theme.spacing
+        anchors.top: App.fullscreen ? parent.top : header.bottom
+        anchors.topMargin: App.fullscreen ? 0 : Theme.spacing
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: Theme.spacingLarge
-        anchors.rightMargin: Theme.spacingLarge
-        anchors.bottom: controls.top
-        anchors.bottomMargin: Theme.spacing
+        anchors.leftMargin: App.fullscreen ? 0 : Theme.spacingLarge
+        anchors.rightMargin: App.fullscreen ? 0 : Theme.spacingLarge
+        anchors.bottom: (App.fullscreen && !page.controlsVisible) ? parent.bottom : controls.top
+        anchors.bottomMargin: App.fullscreen ? 0 : Theme.spacing
 
-        // Collapses to zero width when hidden, exactly like the details panel:
-        // the video surface then expands into the freed space.
+        // The playlist hides behind a slim fold handle on the left edge. The
+        // handle stays outside the video rectangle so it can always be grabbed,
+        // while the panel itself slides in and out.
         Item {
             id: playlistHolder
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: page.playlistVisible ? 300 + Theme.spacing : 0
+            width: App.fullscreen ? 0 : (page.playlistVisible ? 334 : 34)
             clip: true
 
             Behavior on width {
@@ -223,8 +211,39 @@ Item {
                 }
             }
 
+            // Fold handle
+            Rectangle {
+                id: playlistToggle
+                anchors.left: parent.left
+                anchors.leftMargin: 2
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30
+                height: 64
+                radius: 15
+                color: playlistToggleArea.containsMouse ? Theme.surfaceHover : Theme.glass
+                border.width: 1
+                border.color: page.playlistVisible ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
+
+                Text {
+                    anchors.centerIn: parent
+                    text: page.playlistVisible ? "‹" : "›"
+                    color: page.playlistVisible ? Theme.accentSoft : Theme.textSecondary
+                    font.pixelSize: 20
+                    font.weight: Font.DemiBold
+                }
+
+                MouseArea {
+                    id: playlistToggleArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.playlistVisible = !page.playlistVisible
+                }
+            }
+
             Rectangle {
                 anchors.left: parent.left
+                anchors.leftMargin: 34
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: 300
@@ -318,7 +337,7 @@ Item {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: page.detailsVisible ? 344 + Theme.spacing : 0
+            width: (page.detailsVisible && !App.fullscreen) ? 344 + Theme.spacing : 0
             clip: true
 
             Behavior on width {
@@ -354,6 +373,42 @@ Item {
         anchors.margins: Theme.spacingLarge
         anchors.topMargin: 0
         height: 78
+        opacity: (App.fullscreen && !page.controlsVisible) ? 0 : 1
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 180
+            }
+        }
+    }
+
+    // ------------------------------------------------- fullscreen auto-hide
+    Timer {
+        id: hideControlsTimer
+        interval: 3000
+        repeat: false
+        onTriggered: {
+            if (App.fullscreen)
+                page.controlsVisible = false;
+        }
+    }
+
+    Connections {
+        target: App
+        function onFullscreenChanged() {
+            page.controlsVisible = true;
+            if (App.fullscreen)
+                hideControlsTimer.restart();
+        }
+    }
+
+    // Detects mouse movement in fullscreen to bring the bar back. Hover events
+    // pass through the window-level video item, so this still fires above it.
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+        enabled: App.fullscreen
+        onPositionChanged: page.revealControls()
     }
 
     // Keyboard shortcuts

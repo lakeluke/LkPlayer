@@ -3,9 +3,11 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QQuickWindow>
+#include <QSet>
 #include <QTimer>
 #include <QUrl>
 
@@ -795,6 +797,92 @@ void AppController::revealInFileManager(const QString &filePath)
     if (filePath.isEmpty())
         return;
     QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(filePath).absolutePath()));
+}
+
+QVariantMap AppController::deletePreview(const QString &filePath) const
+{
+    QVariantMap result;
+    result.insert(QStringLiteral("deleteFolder"), false);
+    result.insert(QStringLiteral("targets"), QStringList());
+
+    const int row = m_itemModel->indexOfPath(filePath);
+    if (row < 0)
+        return result;
+    const MediaItem *item = m_itemModel->itemAt(row);
+    if (!item || item->folderPath.isEmpty())
+        return result;
+
+    // Every sidecar asset that travels with the video.
+    QStringList assets;
+    if (!item->posterPath.isEmpty())
+        assets << item->posterPath;
+    if (!item->nfoPath.isEmpty())
+        assets << item->nfoPath;
+    if (!item->fanartPath.isEmpty())
+        assets << item->fanartPath;
+    assets << item->subtitles;
+    assets << item->stillImages;
+    assets.removeAll(QString());
+    assets.removeDuplicates();
+
+    // When the folder holds nothing but the video and its own assets, remove the
+    // whole folder. Otherwise only remove the video file and leave shared
+    // folder-level assets (poster, movie.nfo) and unrelated files untouched.
+    const QDir dir(item->folderPath);
+    const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+
+    QSet<QString> relatedNames;
+    relatedNames.insert(QFileInfo(item->filePath).fileName());
+    for (const QString &asset : assets)
+        relatedNames.insert(QFileInfo(asset).fileName());
+
+    bool hasSubdirs = false;
+    bool hasOtherFiles = false;
+    for (const QFileInfo &entry : entries) {
+        if (entry.isDir())
+            hasSubdirs = true;
+        else if (!relatedNames.contains(entry.fileName()))
+            hasOtherFiles = true;
+    }
+
+    const bool deleteFolder = !hasSubdirs && !hasOtherFiles;
+    QStringList targets;
+    targets.append(deleteFolder ? dir.absolutePath() : item->filePath);
+
+    result.insert(QStringLiteral("deleteFolder"), deleteFolder);
+    result.insert(QStringLiteral("targets"), targets);
+    return result;
+}
+
+bool AppController::deleteItem(const QString &filePath)
+{
+    const QVariantMap preview = deletePreview(filePath);
+    const QStringList targets = preview.value(QStringLiteral("targets")).toStringList();
+    if (targets.isEmpty())
+        return false;
+
+    // Stop before removing a file we might currently be playing.
+    if (m_player && m_player->filePath() == filePath)
+        stopPlayback();
+
+    bool ok = true;
+    for (const QString &target : targets) {
+        const QFileInfo info(target);
+        if (info.isDir()) {
+            if (!QDir(target).removeRecursively())
+                ok = false;
+        } else if (QFile::exists(target) && !QFile::remove(target)) {
+            ok = false;
+        }
+    }
+
+    if (ok) {
+        // Refresh the library in place so the removed card disappears at once.
+        if (m_scanner && !m_scanner->isRunning())
+            m_scanner->startWithMode(LibraryScanner::Mode::Verify);
+    }
+
+    return ok;
 }
 
 QVariantMap AppController::itemAt(int row) const

@@ -170,6 +170,11 @@ public slots:
     void openWithSystemPlayer(const QString &filePath);
     void revealInFileManager(const QString &filePath);
 
+    /** Describes what would be removed for the given video (confirmation UI). */
+    Q_INVOKABLE QVariantMap deletePreview(const QString &filePath) const;
+    /** Deletes the video (and, when the folder holds nothing else, the folder). */
+    Q_INVOKABLE bool deleteItem(const QString &filePath);
+
     /** Returns an empty string when the directory is usable, an error otherwise. */
     Q_INVOKABLE QString checkToolDirectory(const QString &dir) const;
     /** First directory on PATH that contains ffplay/ffmpeg, or empty. */

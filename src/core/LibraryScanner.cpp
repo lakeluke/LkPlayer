@@ -388,6 +388,7 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
         FolderNode node = m_folders.value(absPath);
         node.path = absPath;
         node.name = folderName.isEmpty() ? absPath : folderName;
+        node.parentPath = depth > 0 ? QFileInfo(absPath).path() : QString();
         node.depth = depth;
         node.childPaths = childDirs;
         node.directVideoCount = ownItems.size();
@@ -414,6 +415,7 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
                 FolderNode placeholder;
                 placeholder.path = child;
                 placeholder.name = QFileInfo(child).fileName();
+                placeholder.parentPath = absPath;
                 placeholder.depth = depth + 1;
                 m_folders.insert(child, placeholder);
             }

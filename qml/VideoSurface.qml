@@ -13,6 +13,8 @@ Item {
     readonly property bool active: player ? player.active : false
     /** False when the registered system player owns playback. */
     readonly property bool controllable: player ? player.controllable : true
+    // Square corners in fullscreen so the picture truly fills the screen.
+    readonly property int radius: App.fullscreen ? 0 : Theme.radiusLarge
 
     function reportGeometry() {
         if (width <= 0 || height <= 0)
@@ -57,7 +59,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: Theme.radiusLarge
+        radius: root.radius
         color: Theme.backgroundDeep
         clip: true
 
@@ -69,7 +71,7 @@ Item {
         // Backdrop when nothing is playing yet.
         PosterImage {
             anchors.fill: parent
-            radius: Theme.radiusLarge
+            radius: root.radius
             visible: !root.active && App.currentItem && App.currentItem.filePath !== undefined
             source: App.currentItem && App.currentItem.fanartPath ? "file:///" + App.currentItem.fanartPath : ""
             showPlaceholder: false
@@ -78,7 +80,7 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            radius: Theme.radiusLarge
+            radius: root.radius
             color: Qt.rgba(0.02, 0.02, 0.04, 0.72)
             visible: !root.embedded || !root.active
         }

@@ -17,6 +17,7 @@ Item {
     property int reloadTick: 0
 
     signal activated()
+    signal contextMenuRequested()
 
     readonly property bool hovered: hoverArea.containsMouse
     readonly property string coverSource: coverUrl ? coverUrl.toString() : ""
@@ -212,6 +213,14 @@ Item {
         anchors.fill: coverWrap
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.activated()
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: mouse => {
+            if (mouse.button === Qt.LeftButton)
+                root.activated();
+        }
+        onPressed: mouse => {
+            if (mouse.button === Qt.RightButton)
+                root.contextMenuRequested();
+        }
     }
 }

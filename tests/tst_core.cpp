@@ -146,7 +146,9 @@ private slots:
 
         QVERIFY(finishedSpy.wait(20000));
         QVERIFY(itemsSpy.count() > 0);
-        QCOMPARE(structureSpy.count(), 1);
+        // A fresh scan publishes the folder tree incrementally as it grows, so
+        // the complete structure is the last emission, not the only one.
+        QVERIFY(structureSpy.count() >= 1);
 
         MediaItemList items;
         for (const QList<QVariant> &args : itemsSpy)
@@ -167,7 +169,7 @@ private slots:
         QVERIFY(target->tags.contains(QStringLiteral("4K")));
         QVERIFY(qAbs(target->duration - 96 * 60.0) < 0.001);
 
-        const FolderNodeList folders = structureSpy.at(0).at(0).value<FolderNodeList>();
+        const FolderNodeList folders = structureSpy.last().at(0).value<FolderNodeList>();
         QHash<QString, FolderNode> byPath;
         for (const FolderNode &node : folders)
             byPath.insert(node.path, node);
@@ -368,7 +370,7 @@ private slots:
             items += args.at(0).value<MediaItemList>();
         QCOMPARE(items.size(), 1);
         QCOMPARE(deltaSpy.count(), 0);
-        QCOMPARE(structureSpy.count(), 1);
+        QVERIFY(structureSpy.count() >= 1);
     }
 };
 

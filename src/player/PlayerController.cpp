@@ -167,7 +167,7 @@ void PlayerController::toggleMute()
 
 void PlayerController::setSpeed(double speed)
 {
-    const double clamped = qBound(0.25, speed, 4.0);
+    const double clamped = qBound(0.1, speed, 10.0);
     if (qFuzzyCompare(clamped + 1.0, m_speed + 1.0))
         return;
     m_speed = clamped;

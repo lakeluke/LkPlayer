@@ -9,6 +9,44 @@ Item {
 
     readonly property string playingPath: App.currentItem && App.currentItem.filePath ? App.currentItem.filePath : ""
 
+    // Playlist sort order. "scan" is the default traversal order; the others
+    // reorder App.allVideos (the flat playlist) in place.
+    readonly property var sortFields: ["scan", "title", "name", "path", "duration", "modified", "release"]
+    readonly property var sortLabels: ["扫描顺序", "标题", "文件名", "路径", "时长", "修改时间", "发行时间"]
+    property int sortIndex: 0
+
+    // Playback mode dropdown. The embedded backend is skipped where the build
+    // or platform cannot host it.
+    readonly property var modeKeys: App.embeddedSupported
+        ? ["standalone", "embedded", "system"]
+        : ["standalone", "system"]
+    readonly property var modeLabels: App.embeddedSupported
+        ? ["独立窗口", "内嵌模式", "系统播放器"]
+        : ["独立窗口", "系统播放器"]
+
+    function modeIndex() {
+        const i = modeKeys.indexOf(App.settings.playMode);
+        return i >= 0 ? i : 0;
+    }
+
+    function isTimeSort(field) {
+        return field === "duration" || field === "modified" || field === "release";
+    }
+
+    function applySort(index) {
+        sortIndex = index;
+        const field = sortFields[sortIndex];
+        // Time-like fields read better newest / longest first.
+        const ascending = !page.isTimeSort(field);
+        App.allVideos.sortBy(field, ascending);
+        // Keep the playing item visible after the reorder.
+        if (page.playingPath.length > 0) {
+            const idx = App.allVideos.indexOfPath(page.playingPath);
+            if (idx >= 0)
+                Qt.callLater(() => playlistView.positionViewAtIndex(idx, ListView.Contain));
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
@@ -92,31 +130,12 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.spacingSmall
 
-            Rectangle {
-                readonly property string label: App.playModeLabel(App.settings.playMode)
-
+            Dropdown {
                 height: 32
-                width: modeText.implicitWidth + 34
-                radius: 16
-                color: modeArea.containsMouse ? Theme.surfaceHover : Theme.glass
-                border.width: 1
-                border.color: Theme.border
-
-                Text {
-                    id: modeText
-                    anchors.centerIn: parent
-                    text: parent.label
-                    color: Theme.textSecondary
-                    font.pixelSize: Theme.fontCaption
-                }
-
-                MouseArea {
-                    id: modeArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: App.setPlayMode(App.nextPlayMode())
-                }
+                width: 120
+                model: page.modeLabels
+                currentIndex: page.modeIndex()
+                onActivated: index => App.setPlayMode(page.modeKeys[index])
             }
 
         }
@@ -132,10 +151,25 @@ Item {
         anchors.topMargin: App.fullscreen ? 0 : Theme.spacing
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: App.fullscreen ? 0 : Theme.spacingLarge
-        anchors.rightMargin: App.fullscreen ? 0 : Theme.spacingLarge
+        // With both side panels folded there is nothing to breathe around, so
+        // the stage hugs the edges and lets the video fill the full width.
+        anchors.leftMargin: (App.fullscreen || (!App.playlistVisible && !App.detailsVisible)) ? 0 : Theme.spacingLarge
+        anchors.rightMargin: (App.fullscreen || (!App.playlistVisible && !App.detailsVisible)) ? 0 : Theme.spacingLarge
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: App.fullscreen ? 0 : (78 + Theme.spacingLarge + Theme.spacing)
+        anchors.bottomMargin: App.fullscreen ? 0 : (58 + Theme.spacing)
+
+        Behavior on anchors.leftMargin {
+            NumberAnimation {
+                duration: Theme.durationNormal
+                easing: Theme.easingStandard
+            }
+        }
+        Behavior on anchors.rightMargin {
+            NumberAnimation {
+                duration: Theme.durationNormal
+                easing: Theme.easingStandard
+            }
+        }
 
         // The playlist panel slides in from the left edge. Its fold handle lives
         // in Main.qml, floating over the video, so this slot only holds the panel.
@@ -170,13 +204,32 @@ Item {
                     anchors.margins: 14
                     spacing: Theme.spacingSmall
 
-                    Text {
+                    Item {
                         width: parent.width
-                        text: "播放列表 · " + App.allVideos.count + " 个视频"
-                        color: Theme.textPrimary
-                        font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
+                        height: 24
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.right: sortChip.left
+                            anchors.rightMargin: Theme.spacingSmall
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "播放列表 · " + App.allVideos.count + " 个视频"
+                            color: Theme.textPrimary
+                            font.pixelSize: Theme.fontBody
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+
+                        Dropdown {
+                            id: sortChip
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 24
+                            width: 100
+                            model: page.sortLabels
+                            currentIndex: page.sortIndex
+                            onActivated: index => page.applySort(index)
+                        }
                     }
 
                     ListView {

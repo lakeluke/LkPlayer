@@ -6,6 +6,7 @@
 
 #include <mpv/client.h>
 
+#include <cmath>
 #include <cstring>
 
 Q_LOGGING_CATEGORY(lcMpv, "lk.player.mpv")
@@ -103,6 +104,8 @@ MpvEngine::MpvEngine(QObject *parent)
     observe(m_mpv, "time-pos", MPV_FORMAT_DOUBLE);
     observe(m_mpv, "duration", MPV_FORMAT_DOUBLE);
     observe(m_mpv, "pause", MPV_FORMAT_FLAG);
+    observe(m_mpv, "width", MPV_FORMAT_INT64);
+    observe(m_mpv, "height", MPV_FORMAT_INT64);
 
     m_pollTimer = new QTimer(this);
     m_pollTimer->setInterval(kPollIntervalMs);
@@ -211,7 +214,34 @@ void MpvEngine::setSpeed(double factor)
 {
     if (!m_mpv)
         return;
-    setDouble(m_mpv, "speed", qBound(0.25, factor, 4.0));
+    setDouble(m_mpv, "speed", qBound(0.1, factor, 10.0));
+}
+
+void MpvEngine::updateVideoFit(const QSize &areaSize)
+{
+    m_areaSize = areaSize;
+    applyVideoFit();
+}
+
+void MpvEngine::applyVideoFit()
+{
+    if (!m_mpv || m_videoSize.width() <= 0 || m_videoSize.height() <= 0
+        || m_areaSize.width() <= 0 || m_areaSize.height() <= 0)
+        return;
+
+    const double videoAspect = double(m_videoSize.width()) / double(m_videoSize.height());
+    const double areaAspect = double(m_areaSize.width()) / double(m_areaSize.height());
+
+    // Default mpv behaviour letterboxes (fit); to fill the area we zoom in
+    // until the shorter side is covered and let the overflow be cropped.
+    // `video-zoom` is logarithmic (2^value), so the ratio becomes a log2.
+    const double zoom = areaAspect > videoAspect
+                            ? std::log2(areaAspect / videoAspect)
+                            : std::log2(videoAspect / areaAspect);
+
+    setDouble(m_mpv, "video-zoom", zoom);
+    setDouble(m_mpv, "video-pan-x", 0.0);
+    setDouble(m_mpv, "video-pan-y", 0.0);
 }
 
 void MpvEngine::drainEvents()
@@ -275,6 +305,12 @@ void MpvEngine::handlePropertyChange(mpv_event_property *property)
         emit durationChanged(*static_cast<double *>(property->data));
     } else if (std::strcmp(property->name, "pause") == 0 && property->format == MPV_FORMAT_FLAG) {
         emit pausedChanged(*static_cast<int *>(property->data) != 0);
+    } else if (std::strcmp(property->name, "width") == 0 && property->format == MPV_FORMAT_INT64) {
+        m_videoSize.setWidth(static_cast<int>(*static_cast<int64_t *>(property->data)));
+        applyVideoFit();
+    } else if (std::strcmp(property->name, "height") == 0 && property->format == MPV_FORMAT_INT64) {
+        m_videoSize.setHeight(static_cast<int>(*static_cast<int64_t *>(property->data)));
+        applyVideoFit();
     }
 }
 

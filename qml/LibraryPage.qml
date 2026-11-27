@@ -13,6 +13,36 @@ Item {
     property bool sidebarCollapsed: false
     property string contextFilePath: ""
 
+    // Scroll position persistence: the grid reports its contentY as the user
+    // scrolls, the controller stamps it onto the current scope right before the
+    // scope changes, and we restore it here once the grid is rebuilt.
+    readonly property string gridScrollKey: App.viewMode === "drill" && App.currentFolder.length > 0
+                                            ? App.currentFolder : "flat"
+
+    property bool scrollRestorePending: false
+    property int scrollRestoreTarget: 0
+
+    onGridScrollKeyChanged: requestScrollRestore()
+
+    Component.onCompleted: requestScrollRestore()
+    Component.onDestruction: App.commitGridScroll()
+
+    function requestScrollRestore() {
+        scrollRestoreTarget = App.gridScrollForCurrentFolder();
+        scrollRestorePending = scrollRestoreTarget > 0;
+        attemptScrollRestore();
+    }
+
+    function attemptScrollRestore() {
+        if (!scrollRestorePending)
+            return;
+        const maxY = grid.contentHeight - grid.height;
+        if (maxY <= 0)
+            return;  // model still laying out; retried on contentHeight change
+        grid.contentY = Math.min(scrollRestoreTarget, maxY);
+        scrollRestorePending = false;
+    }
+
     /**
      * The current folder has subfolders but not a single video of its own, and
      * no filter is narrowing the grid. The two zones share the page, so the one
@@ -184,6 +214,7 @@ Item {
                 anchors.topMargin: 24
                 anchors.left: parent.left
                 anchors.right: parent.right
+                anchors.rightMargin: 12
                 anchors.bottom: parent.bottom
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
@@ -206,6 +237,13 @@ Item {
                     relativePath: model.relativePath
                     onActivated: App.openFolder(model.path)
                 }
+            }
+
+            GridScrollBar {
+                anchors.top: folderGrid.top
+                anchors.bottom: folderGrid.bottom
+                anchors.right: parent.right
+                flickable: folderGrid
             }
 
             // Only drawn when there really are two zones: with no videos below,
@@ -247,6 +285,9 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
                 maximumFlickVelocity: 3200
 
+                onContentYChanged: App.reportGridScroll(grid.contentY)
+                onContentHeightChanged: page.attemptScrollRestore()
+
                 delegate: MediaCard {
                     width: gridArea.cardWidth
                     height: grid.cellHeight - Theme.cardGap
@@ -276,74 +317,11 @@ Item {
                 }
             }
 
-            // Custom scrollbar
-            Item {
-                id: scrollTrack
+            GridScrollBar {
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.right: parent.right
-                width: 8
-                visible: grid.contentHeight > grid.height
-
-                readonly property real ratio: grid.contentHeight > 0 ? grid.height / grid.contentHeight : 1
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 4
-                    color: Theme.dark ? Qt.rgba(1, 1, 1, 0.05) : Qt.rgba(0, 0, 0, 0.05)
-                }
-
-                Rectangle {
-                    id: scrollHandleItem
-                    width: parent.width
-                    radius: 4
-                    color: Theme.dark ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(0, 0, 0, 0.18)
-                    height: Math.max(36, parent.height * parent.ratio)
-                    y: {
-                        if (grid.contentHeight <= grid.height)
-                            return 0;
-                        const span = parent.height - height;
-                        const progress = grid.contentY / (grid.contentHeight - grid.height);
-                        return Math.max(0, Math.min(span, span * progress));
-                    }
-
-                    Behavior on y {
-                        // While dragging the handle has to sit under the pointer
-                        // instead of easing behind it.
-                        enabled: !scrollHandle.pressed
-                        NumberAnimation {
-                            duration: 120
-                        }
-                    }
-
-                    MouseArea {
-                        id: scrollHandle
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        /** Where inside the handle the drag started. */
-                        property real grabOffset: 0
-
-                        onPressed: mouse => {
-                            grabOffset = mouse.y;
-                        }
-                        onPositionChanged: mouse => {
-                            if (!pressed)
-                                return;
-
-                            const span = scrollTrack.height - scrollHandleItem.height;
-                            const maxContentY = grid.contentHeight - grid.height;
-                            if (span <= 0 || maxContentY <= 0)
-                                return;
-
-                            // The handle's y follows contentY, so the pointer
-                            // position has to be translated back into a scroll
-                            // offset instead of moving the handle directly.
-                            const wanted = scrollHandleItem.y + mouse.y - grabOffset;
-                            const top = Math.max(0, Math.min(span, wanted));
-                            grid.contentY = maxContentY * (top / span);
-                        }
-                    }
-                }
+                flickable: grid
             }
 
             EmptyState {
@@ -385,10 +363,14 @@ Item {
     // owned by the window, which is what lets it survive the page switch.
     MiniPlayer {
         id: miniPlayer
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: Theme.spacingLarge
         onExpandRequested: page.playRequested()
+
+        Component.onCompleted: {
+            // Start in the bottom-right corner; the user can then drag it around.
+            miniPlayer.x = parent.width - miniPlayer.width - Theme.spacingLarge;
+            miniPlayer.y = parent.height - miniPlayer.height - Theme.spacingLarge;
+            miniPlayer.clampPosition();
+        }
     }
 
     // ------------------------------------------------------------ context menu

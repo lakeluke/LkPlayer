@@ -166,10 +166,18 @@ bool MediaFilterProxyModel::filterAcceptsRow(int sourceRow, const QModelIndex &s
         bool hit = item->title.contains(m_searchText, Qt::CaseInsensitive)
                    || item->fileName.contains(m_searchText, Qt::CaseInsensitive)
                    || item->relativeFolder.contains(m_searchText, Qt::CaseInsensitive);
-        // The docs promise the search box also matches tags.
+        // The docs promise the search box also matches tags and actors.
         if (!hit) {
             for (const QString &tag : item->tags) {
                 if (tag.contains(m_searchText, Qt::CaseInsensitive)) {
+                    hit = true;
+                    break;
+                }
+            }
+        }
+        if (!hit) {
+            for (const QString &actor : item->actors) {
+                if (actor.contains(m_searchText, Qt::CaseInsensitive)) {
                     hit = true;
                     break;
                 }
@@ -225,4 +233,30 @@ QString MediaFilterProxyModel::filePathAt(int row) const
     if (row < 0 || row >= rowCount())
         return QString();
     return data(index(row, 0), MediaItemModel::FilePathRole).toString();
+}
+
+void MediaFilterProxyModel::sortBy(const QString &field, bool ascending)
+{
+    int role = -1;
+    if (field == QLatin1String("title"))
+        role = MediaItemModel::TitleRole;
+    else if (field == QLatin1String("name"))
+        role = MediaItemModel::FileNameRole;
+    else if (field == QLatin1String("path"))
+        role = MediaItemModel::FilePathRole;
+    else if (field == QLatin1String("duration"))
+        role = MediaItemModel::DurationRole;
+    else if (field == QLatin1String("modified"))
+        role = MediaItemModel::ModifiedRole;
+    else if (field == QLatin1String("release"))
+        role = MediaItemModel::YearRole;
+
+    if (role < 0) {
+        // "scan" (or unknown): drop the proxy's sort so rows follow the source
+        // model's traversal order again.
+        sort(-1);
+        return;
+    }
+    setSortRole(role);
+    sort(0, ascending ? Qt::AscendingOrder : Qt::DescendingOrder);
 }

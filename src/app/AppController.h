@@ -23,7 +23,6 @@ class LibraryScanner;
 class MpvEngine;
 class ThumbnailCache;
 class QQuickWindow;
-class QTimer;
 
 /**
  * Facade that the QML layer talks to. It owns the library data, the scanning
@@ -44,6 +43,10 @@ class AppController : public QObject
 
     Q_PROPERTY(QString libraryRoot READ libraryRoot WRITE setLibraryRoot NOTIFY libraryRootChanged)
     Q_PROPERTY(bool libraryReady READ libraryReady NOTIFY libraryRootChanged)
+    /** When the media library was last scanned, or empty when never scanned. */
+    Q_PROPERTY(QString lastScanTime READ lastScanTime NOTIFY lastScanTimeChanged)
+    /** True when there is no scan index yet and the user should scan. */
+    Q_PROPERTY(bool needsScan READ needsScan NOTIFY needsScanChanged)
 
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(int scannedFiles READ scannedFiles NOTIFY progressChanged)
@@ -52,6 +55,8 @@ class AppController : public QObject
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
+    /** Current sort key of the library grid ("scan", "title", ... "release"). */
+    Q_PROPERTY(QString gridSortField READ gridSortField NOTIFY gridSortFieldChanged)
     Q_PROPERTY(QString currentFolder READ currentFolder NOTIFY currentFolderChanged)
     Q_PROPERTY(QString currentFolderName READ currentFolderName NOTIFY currentFolderChanged)
     Q_PROPERTY(QVariantList breadcrumb READ breadcrumb NOTIFY breadcrumbChanged)
@@ -97,6 +102,8 @@ public:
 
     QString libraryRoot() const;
     bool libraryReady() const;
+    QString lastScanTime() const { return m_lastScanTime; }
+    bool needsScan() const { return m_needsScan; }
 
     bool scanning() const { return m_scanning; }
     int scannedFiles() const { return m_scannedFiles; }
@@ -105,6 +112,7 @@ public:
     QString errorMessage() const { return m_errorMessage; }
 
     QString viewMode() const { return m_viewMode; }
+    QString gridSortField() const { return m_gridSortField; }
     QString currentFolder() const { return m_currentFolder; }
     QString currentFolderName() const;
     QVariantList breadcrumb() const { return m_breadcrumb; }
@@ -135,6 +143,10 @@ public:
     // they have to be invokable: being a Q_PROPERTY WRITE accessor is not enough.
     Q_INVOKABLE void setLibraryRoot(const QString &path);
     Q_INVOKABLE void setViewMode(const QString &mode);
+    /** Sets the library-grid sort field and applies it. */
+    Q_INVOKABLE void setGridSort(const QString &field);
+    /** Opens the library filtered to every video the given actor appears in. */
+    Q_INVOKABLE void openActor(const QString &actor);
     Q_INVOKABLE void setSelectedTags(const QStringList &tags);
     Q_INVOKABLE void setSearchText(const QString &text);
     Q_INVOKABLE void setPlaylistVisible(bool visible);
@@ -173,6 +185,8 @@ public slots:
     void setPlayMode(const QString &mode);
     void setThemeMode(const QString &mode);
     void clearThumbnailCache();
+    /** Queues generation of every missing cover (settings action). */
+    Q_INVOKABLE void generateAllCovers();
     void openWithSystemPlayer(const QString &filePath);
     void revealInFileManager(const QString &filePath);
 
@@ -196,17 +210,34 @@ public slots:
     /** Converts a `file:///...` url coming from a dialog into a local path. */
     Q_INVOKABLE QString toLocalPath(const QString &urlOrPath) const;
 
+    /**
+     * Grid scroll position persistence.
+     *
+     * The library grid reports its `contentY` through reportGridScroll() while
+     * the user scrolls; commitGridScroll() stamps that value onto the current
+     * browsing scope (whole library or one folder) right before the scope
+     * changes, and gridScrollForCurrentFolder() hands it back once the grid is
+     * rebuilt. This keeps the scroll position across folder navigation and page
+     * switches without the QML layer having to know when a scope change starts.
+     */
+    Q_INVOKABLE void reportGridScroll(int contentY);
+    Q_INVOKABLE void commitGridScroll();
+    Q_INVOKABLE int gridScrollForCurrentFolder() const;
+
 signals:
     void playerChanged();
     void videoRectChanged();
     void videoVisibleChanged();
     void fullscreenChanged();
     void libraryRootChanged();
+    void lastScanTimeChanged();
+    void needsScanChanged();
     void scanningChanged();
     void progressChanged();
     void statusMessageChanged();
     void errorMessageChanged();
     void viewModeChanged();
+    void gridSortFieldChanged();
     void currentFolderChanged();
     void breadcrumbChanged();
     void folderCountChanged();
@@ -219,10 +250,15 @@ signals:
     void currentItemChanged();
     void thumbnailReady(const QString &filePath);
     void playbackRequested(const QString &filePath);
+    /** The user asked to browse one actor's videos: switch to the library. */
+    void actorBrowseRequested();
 
 private:
     void wireSettings();
     void startScan();
+    /** Restores the cached scan index without touching the disk. */
+    void loadLibrary();
+    void updateLastScanTime();
     void rebuildPlayer();
     /**
      * The embedded backend renders through one shared libmpv instance, so it
@@ -237,6 +273,8 @@ private:
     void updateCurrentFolderModel();
     void setStatus(const QString &message);
     void setError(const QString &message);
+    /** Stable key for the grid scroll position of the current browsing scope. */
+    QString gridScrollKey() const;
 
     /** Drops everything the current scan produced (model, folders, counters). */
     void resetLibraryView();
@@ -244,8 +282,6 @@ private:
     void onFolderItemsChanged(const QString &folderPath, const MediaItemList &items);
     void onStructureReady(const FolderNodeList &folders);
     void onScanFinished(int totalVideos, bool cancelled);
-    /** Cheap background pass that only reports folders whose content changed. */
-    void verifyLibrary();
 
     SettingsStore *m_settings = nullptr;
     LibraryScanner *m_scanner = nullptr;
@@ -263,9 +299,6 @@ private:
     bool m_videoVisible = false;
     bool m_fullscreen = false;
 
-    /** Drives the cheap background re-check of the library. */
-    QTimer *m_verifyTimer = nullptr;
-    qint64 m_lastVerifyMs = 0;
     /** Set when a (re)scan was requested while another one was still running. */
     bool m_restartScan = false;
     bool m_restartFull = false;
@@ -273,7 +306,13 @@ private:
     QHash<QString, FolderNode> m_folderNodes;
     QHash<QString, QString> m_folderCoverHints;
 
+    /** Grid scroll position per browsing scope (folder path, or "flat"). */
+    QHash<QString, int> m_gridScrollPositions;
+    /** Most recent `contentY` reported by the grid. */
+    int m_lastReportedScroll = 0;
+
     QString m_viewMode = QStringLiteral("flat");
+    QString m_gridSortField = QStringLiteral("scan");
     QString m_currentFolder;
     QVariantList m_breadcrumb;
     QVariantMap m_currentItem;
@@ -285,4 +324,6 @@ private:
     int m_scannedVideos = 0;
     QString m_statusMessage;
     QString m_errorMessage;
+    QString m_lastScanTime;
+    bool m_needsScan = false;
 };

@@ -12,7 +12,7 @@ namespace {
 
 // Bump the version whenever the layout below changes; older files are ignored.
 constexpr quint32 kMagic = 0x4C4B4958; // "LKIX"
-constexpr quint32 kVersion = 3;
+constexpr quint32 kVersion = 4;
 
 void writeTags(QDataStream &stream, const QHash<QString, int> &tags)
 {
@@ -43,8 +43,8 @@ void writeItem(QDataStream &stream, const MediaItem &item)
 {
     stream << item.filePath << item.fileName << item.title << item.folderPath << item.relativeFolder
            << item.posterPath << item.nfoPath << item.fanartPath << item.subtitles << item.stillImages
-           << item.tags << item.genres << item.actors << item.plot << item.year << item.duration
-           << item.fileSize << item.lastModified;
+           << item.tags << item.genres << item.actors << item.plot << item.year << item.premiered
+           << item.duration << item.fileSize << item.lastModified;
 }
 
 MediaItem readItem(QDataStream &stream)
@@ -52,8 +52,8 @@ MediaItem readItem(QDataStream &stream)
     MediaItem item;
     stream >> item.filePath >> item.fileName >> item.title >> item.folderPath >> item.relativeFolder
         >> item.posterPath >> item.nfoPath >> item.fanartPath >> item.subtitles >> item.stillImages
-        >> item.tags >> item.genres >> item.actors >> item.plot >> item.year >> item.duration
-        >> item.fileSize >> item.lastModified;
+        >> item.tags >> item.genres >> item.actors >> item.plot >> item.year >> item.premiered
+        >> item.duration >> item.fileSize >> item.lastModified;
     return item;
 }
 

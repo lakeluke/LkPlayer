@@ -26,9 +26,12 @@ struct MediaItem
     QStringList actors;      //!< actor names from the nfo
     QString plot;            //!< synopsis
     QString year;            //!< release year as text
+    QString premiered;       //!< full release date as text (nfo premiered / releasedate)
     double duration = 0.0;   //!< duration in seconds, 0 when unknown (from nfo runtime)
     qint64 fileSize = 0;     //!< size in bytes
     qint64 lastModified = 0; //!< modification time (ms since epoch)
+    /** Position in the scan traversal; lets the playlist restore "scan order". */
+    int scanOrder = 0;
 };
 
 Q_DECLARE_METATYPE(MediaItem)

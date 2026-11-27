@@ -36,6 +36,7 @@ public:
         Snapshot, //!< publish the cached index first, then verify it
         Verify,   //!< background check: only reports the directories that changed
         Full,     //!< ignore the cache and read every directory again
+        LoadOnly, //!< publish the cached index only; never touch the disk
     };
 
     explicit LibraryScanner(QObject *parent = nullptr);
@@ -54,7 +55,7 @@ public:
 
     Mode mode() const { return m_mode; }
     /** True for background checks, which must not disturb the visible state. */
-    bool isBackground() const { return m_mode == Mode::Verify; }
+    bool isBackground() const { return m_mode == Mode::Verify || m_mode == Mode::LoadOnly; }
 
 public slots:
     /** Cached snapshot first (when there is one), then an incremental verify. */

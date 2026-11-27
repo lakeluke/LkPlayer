@@ -14,18 +14,44 @@ Item {
     readonly property bool controllable: player ? player.controllable : true
     /** Fullscreen uses a dark glass surface over the picture in both themes. */
     readonly property bool fullscreen: App.fullscreen
-    readonly property color textPrimaryColor: root.fullscreen ? "#E6EDF3" : Theme.textPrimary
-    readonly property color textSecondaryColor: root.fullscreen ? "#8B949E" : Theme.textSecondary
-    readonly property color textMutedColor: root.fullscreen ? "#6E7681" : Theme.textMuted
+
+    // Inverted text: pure black/white bars in windowed mode, bright text over
+    // the dark glass in fullscreen. Deliberately not Theme.textSecondary (grey)
+    // so the controls stay high-contrast.
+    readonly property color textPrimaryColor: (root.fullscreen || Theme.dark) ? "#FFFFFF" : "#111111"
+    readonly property color textSecondaryColor: (root.fullscreen || Theme.dark) ? "#D8DEE4" : "#3A3F47"
+    readonly property color textMutedColor: (root.fullscreen || Theme.dark) ? "#8B949E" : "#6A737D"
+
+    // Button fill. Fullscreen floats over arbitrary video frames, so the fill
+    // goes dark to stay visible on bright scenes; windowed mode inverts against
+    // the solid bar.
+    readonly property color controlBg: root.fullscreen ? Qt.rgba(0, 0, 0, 0.40)
+        : (Theme.dark ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(0, 0, 0, 0.08))
+    readonly property color controlBgHover: root.fullscreen ? Qt.rgba(0, 0, 0, 0.56)
+        : (Theme.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.14))
 
     Rectangle {
+        id: barBackground
         anchors.fill: parent
-        radius: Theme.radiusLarge
-        color: root.fullscreen ? Qt.rgba(8, 10, 16, 0.58)
-               : (Theme.dark ? Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.5)
-                             : Qt.rgba(1, 1, 1, 0.8))
+        radius: root.fullscreen ? Theme.radiusLarge : 0
+        // Windowed: solid bar matching the theme (black/white). Fullscreen: a
+        // thinner dark glass so the picture shows through around the buttons.
+        color: root.fullscreen ? Qt.rgba(8, 10, 16, 0.38)
+               : Theme.background
         border.width: 1
-        border.color: root.fullscreen ? Qt.rgba(1, 1, 1, 0.12) : Theme.border
+        border.color: root.fullscreen ? Qt.rgba(1, 1, 1, 0.12)
+                       : (Theme.dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.08))
+
+        // Top hairline highlight in windowed mode (black bar only; a white bar
+        // already reads as a solid surface).
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            color: Qt.rgba(1, 1, 1, 0.18)
+            visible: !root.fullscreen && Theme.dark
+        }
     }
 
     Row {
@@ -95,7 +121,7 @@ Item {
             width: 40
             height: 40
             radius: 20
-            color: stopArea.containsMouse ? Theme.surfaceHover : Theme.glass
+            color: stopArea.containsMouse ? root.controlBgHover : root.controlBg
             border.width: 1
             border.color: Theme.border
             opacity: !root.controllable ? 0.3 : (root.active ? 1.0 : 0.5)
@@ -106,7 +132,7 @@ Item {
                 width: 12
                 height: 12
                 radius: 2
-                color: root.textSecondaryColor
+                color: root.textPrimaryColor
             }
 
             MouseArea {
@@ -129,14 +155,14 @@ Item {
                 width: 40
                 height: 40
                 radius: 20
-                color: skipArea.containsMouse ? Theme.surfaceHover : "transparent"
+                color: skipArea.containsMouse ? root.controlBgHover : "transparent"
                 opacity: !root.controllable ? 0.3 : (root.active ? 1.0 : 0.4)
                 enabled: root.controllable
 
                 Text {
                     anchors.centerIn: parent
                     text: modelData < 0 ? "⏪" : "⏩"
-                    color: root.textSecondaryColor
+                    color: root.textPrimaryColor
                     font.pixelSize: 15
                 }
 
@@ -151,53 +177,147 @@ Item {
             }
         }
 
-        // Playback speed: cycles through the presets on each click.
+        // Playback speed: an editable spinbox with up/down step buttons.
         Item {
             id: speedControl
             anchors.verticalCenter: parent.verticalCenter
-            width: speedChip.width
+            width: 92
             height: 40
+            opacity: !root.controllable ? 0.3 : (root.active ? 1.0 : 0.5)
+            enabled: root.controllable
 
-            readonly property var steps: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+            readonly property real value: root.player ? root.player.speed : 1.0
+            readonly property real minSpeed: 0.1
+            readonly property real maxSpeed: 10.0
 
-            function nextSpeed() {
-                const current = root.player ? root.player.speed : 1.0;
-                let idx = steps.findIndex(s => Math.abs(s - current) < 0.001);
-                if (idx < 0)
-                    idx = steps.indexOf(1.0);
-                return steps[(idx + 1) % steps.length];
+            // Snap to the 0.1 unit and clamp to the allowed range.
+            function clampSpeed(v) {
+                return Math.max(minSpeed, Math.min(maxSpeed, Math.round(v * 10) / 10));
             }
 
-            Rectangle {
-                id: speedChip
-                anchors.verticalCenter: parent.verticalCenter
-                width: 46
-                height: 40
-                radius: 20
-                color: speedArea.containsMouse ? Theme.surfaceHover : Theme.glass
-                border.width: 1
-                border.color: Theme.border
-                opacity: !root.controllable ? 0.3 : (root.active ? 1.0 : 0.5)
-                enabled: root.controllable
+            // Display text: "0.1x", "0.5x", "1x", "1.5x", "10x".
+            function formatSpeed(v) {
+                const n = Math.round(v * 10) / 10;
+                return (n % 1 === 0 ? String(Math.round(n)) : n.toFixed(1)) + "x";
+            }
 
-                Text {
-                    anchors.centerIn: parent
-                    text: {
-                        const s = root.player ? root.player.speed : 1.0;
-                        return (Math.round(s * 100) / 100) + "×";
-                    }
-                    color: root.textSecondaryColor
-                    font.pixelSize: Theme.fontCaption
-                    font.weight: Font.DemiBold
+            function stepUp() {
+                const step = value >= 1.0 ? 1.0 : 0.1;
+                App.setSpeed(clampSpeed(value + step));
+            }
+
+            function stepDown() {
+                const step = value <= 1.0 ? 0.1 : 1.0;
+                App.setSpeed(clampSpeed(value - step));
+            }
+
+            function commit() {
+                const raw = speedInput.text.trim().replace(/[x×X]$/, "").trim();
+                const n = Number(raw);
+                if (raw !== "" && isFinite(n)) {
+                    const target = clampSpeed(n);
+                    App.setSpeed(target);
+                    speedInput.text = formatSpeed(target);
+                } else {
+                    speedInput.text = formatSpeed(value);
                 }
             }
 
-            MouseArea {
-                id: speedArea
-                anchors.fill: speedChip
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: App.setSpeed(speedControl.nextSpeed())
+            Connections {
+                target: speedControl
+                function onValueChanged() {
+                    if (!speedInput.activeFocus)
+                        speedInput.text = speedControl.formatSpeed(speedControl.value);
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                radius: parent.height / 2
+                color: root.controlBg
+                border.width: 1
+                border.color: Theme.border
+
+                TextInput {
+                    id: speedInput
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.right: spinColumn.left
+                    anchors.rightMargin: 4
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: speedControl.formatSpeed(speedControl.value)
+                    color: root.textPrimaryColor
+                    font.pixelSize: Theme.fontBody
+                    font.weight: Font.DemiBold
+                    clip: true
+                    selectByMouse: true
+                    maximumLength: 6
+
+                    onActiveFocusChanged: {
+                        if (activeFocus)
+                            selectAll();
+                    }
+
+                    onEditingFinished: speedControl.commit()
+
+                    Keys.onEscapePressed: {
+                        text = speedControl.formatSpeed(speedControl.value);
+                        focus = false;
+                    }
+                }
+
+                Column {
+                    id: spinColumn
+                    anchors.right: parent.right
+                    anchors.rightMargin: 3
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 22
+                    height: parent.height - 6
+
+                    Rectangle {
+                        width: parent.width
+                        height: parent.height / 2
+                        radius: Theme.radiusSmall / 2
+                        color: upArea.containsMouse ? root.controlBgHover : "transparent"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "▴"
+                            color: root.textSecondaryColor
+                            font.pixelSize: 9
+                        }
+
+                        MouseArea {
+                            id: upArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: speedControl.stepUp()
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: parent.height / 2
+                        radius: Theme.radiusSmall / 2
+                        color: downArea.containsMouse ? root.controlBgHover : "transparent"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "▾"
+                            color: root.textSecondaryColor
+                            font.pixelSize: 9
+                        }
+
+                        MouseArea {
+                            id: downArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: speedControl.stepDown()
+                        }
+                    }
+                }
             }
         }
     }
@@ -229,7 +349,8 @@ Item {
             width: parent.width
             height: seekArea.containsMouse || seekBar.dragging ? 7 : 5
             radius: height / 2
-            color: Theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.1)
+            color: root.fullscreen ? Qt.rgba(1, 1, 1, 0.24)
+                   : (Theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.10))
 
             Behavior on height {
                 NumberAnimation {
@@ -322,7 +443,7 @@ Item {
         Text {
             anchors.verticalCenter: parent.verticalCenter
             text: App.formatDuration(root.duration)
-            color: root.textMutedColor
+            color: root.textSecondaryColor
             font.pixelSize: Theme.fontCaption
         }
     }
@@ -330,7 +451,7 @@ Item {
     // ---------------------------------------------------------------- volume
     Row {
         id: volumeSection
-        anchors.right: modeChip.left
+        anchors.right: fullscreenChip.left
         anchors.rightMargin: Theme.spacingLarge
         anchors.verticalCenter: parent.verticalCenter
         spacing: Theme.spacingSmall
@@ -416,35 +537,6 @@ Item {
         }
     }
 
-    // ------------------------------------------------------------ mode chip
-    Rectangle {
-        id: modeChip
-        anchors.right: fullscreenChip.left
-        anchors.rightMargin: Theme.spacingSmall
-        anchors.verticalCenter: parent.verticalCenter
-        height: 28
-        width: modeLabel.implicitWidth + 22
-        radius: 14
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.16)
-        border.width: 1
-        border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.32)
-
-        Text {
-            id: modeLabel
-            anchors.centerIn: parent
-            text: App.playModeLabel(App.settings.playMode)
-            color: Theme.accentSoft
-            font.pixelSize: 10
-            font.weight: Font.DemiBold
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: App.setPlayMode(App.nextPlayMode())
-        }
-    }
-
     // ---------------------------------------------------- fullscreen toggle
     Rectangle {
         id: fullscreenChip
@@ -454,7 +546,7 @@ Item {
         width: 32
         height: 32
         radius: 16
-        color: fullscreenArea.containsMouse ? Theme.surfaceHover : Theme.glass
+        color: fullscreenArea.containsMouse ? root.controlBgHover : root.controlBg
         border.width: 1
         border.color: App.fullscreen ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35) : Theme.border
 

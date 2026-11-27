@@ -9,6 +9,8 @@
 struct mpv_handle;
 struct MpvUpdateBridge;
 
+class QTimer;
+
 /**
  * QML item that lets libmpv paint into the Qt Quick scene graph.
  *
@@ -53,6 +55,16 @@ public:
      */
     void handleRenderReady();
 
+    /**
+     * Queued from the render thread when the context is torn down (for example
+     * after the backend switched away from embedded). Resets the ready flag and
+     * tells the engine it must wait for a new context before loading again.
+     */
+    void handleRenderContextLost();
+
+protected:
+    void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
+
 signals:
     void playerChanged();
     void renderErrorChanged();
@@ -62,4 +74,6 @@ private:
     QSharedPointer<MpvUpdateBridge> m_bridge;
     QString m_renderError;
     bool m_renderReady = false;
+    /** Debounces cover-fit updates while the panel fold animation runs. */
+    QTimer *m_fitTimer = nullptr;
 };

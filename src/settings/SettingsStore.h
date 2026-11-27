@@ -4,6 +4,8 @@
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
+class QTimer;
+
 /**
  * Persists user preferences in an INI file inside the platform config
  * location. The ffmpeg/ffplay directory is what makes playback (and thumbnail
@@ -21,6 +23,7 @@ class SettingsStore : public QObject
     Q_PROPERTY(QString viewMode READ viewMode WRITE setViewMode NOTIFY viewModeChanged)
     Q_PROPERTY(QString lastFolder READ lastFolder WRITE setLastFolder NOTIFY lastFolderChanged)
     Q_PROPERTY(bool generateCovers READ generateCovers WRITE setGenerateCovers NOTIFY generateCoversChanged)
+    Q_PROPERTY(int volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool toolsValid READ toolsValid NOTIFY toolsValidChanged)
     Q_PROPERTY(QString toolsStatus READ toolsStatus NOTIFY toolsValidChanged)
     Q_PROPERTY(QString configFilePath READ configFilePath CONSTANT)
@@ -56,6 +59,10 @@ public:
     bool generateCovers() const { return m_generateCovers; }
     void setGenerateCovers(bool enabled);
 
+    /** Playback volume, clamped to 0-100. */
+    int volume() const { return m_volume; }
+    void setVolume(int volume);
+
     bool toolsValid() const { return m_toolsValid; }
     QString toolsStatus() const { return m_toolsStatus; }
     QString configFilePath() const { return m_configFilePath; }
@@ -77,6 +84,7 @@ signals:
     void viewModeChanged();
     void lastFolderChanged();
     void generateCoversChanged();
+    void volumeChanged();
     void toolsValidChanged();
 
 private:
@@ -89,7 +97,10 @@ private:
     QString m_viewMode = QStringLiteral("flat");
     QString m_lastFolder;
     bool m_generateCovers = true;
+    int m_volume = 100;
     bool m_toolsValid = false;
     QString m_toolsStatus;
     QString m_configFilePath;
+    /** Debounces frequent volume-drag writes to the INI file. */
+    QTimer *m_syncTimer = nullptr;
 };

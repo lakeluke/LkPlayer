@@ -24,6 +24,15 @@ constexpr int kProcessTimeoutMs = 30000;
 /** Timestamps tried in order; the first successful grab wins. */
 const double kSeekCandidates[] = { 15.0, 5.0, 1.0, 0.0 };
 
+QImage normalizeCover(const QImage &source)
+{
+    const QImage scaled = source.scaled(kCoverWidth, kCoverHeight,
+                                        Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    const int x = (scaled.width() - kCoverWidth) / 2;
+    const int y = (scaled.height() - kCoverHeight) / 2;
+    return scaled.copy(x, y, kCoverWidth, kCoverHeight);
+}
+
 QImage grabFrame(const QString &ffmpegPath, const QString &videoPath, double seekSeconds, const QString &outputPath)
 {
     QProcess process;
@@ -68,11 +77,14 @@ QImage grabFrame(const QString &ffmpegPath, const QString &videoPath, double see
 class ThumbnailJob : public QRunnable
 {
 public:
-    ThumbnailJob(ThumbnailService *service, QString videoPath, QString ffmpegPath, QString outputPath)
+    ThumbnailJob(ThumbnailService *service, QString videoPath, QString ffmpegPath, QString outputPath,
+                 qint64 fileSize, qint64 lastModified)
         : m_service(service)
         , m_videoPath(std::move(videoPath))
         , m_ffmpegPath(std::move(ffmpegPath))
         , m_outputPath(std::move(outputPath))
+        , m_fileSize(fileSize)
+        , m_lastModified(lastModified)
     {
     }
 
@@ -90,7 +102,9 @@ public:
         // Deliver on the service thread.
         QMetaObject::invokeMethod(
             m_service,
-            [service = m_service, path = m_videoPath, image]() { service->completeGeneration(path, image); },
+            [service = m_service, path = m_videoPath, image, fileSize = m_fileSize, lastModified = m_lastModified]() {
+                service->completeGeneration(path, fileSize, lastModified, image);
+            },
             Qt::QueuedConnection);
     }
 
@@ -99,6 +113,8 @@ private:
     QString m_videoPath;
     QString m_ffmpegPath;
     QString m_outputPath;
+    qint64 m_fileSize;
+    qint64 m_lastModified;
 };
 
 } // namespace
@@ -138,9 +154,6 @@ void ThumbnailService::setGenerationEnabled(bool enabled)
 {
     m_generationEnabled.store(enabled, std::memory_order_relaxed);
     if (!enabled) {
-        // Jobs already running will finish and have their result dropped by
-        // completeGeneration(); queued ones never start because lookup() and
-        // requestGeneration() both bail out while the flag is off.
         QMutexLocker locker(&m_mutex);
         m_pending.clear();
     }
@@ -153,11 +166,24 @@ int ThumbnailService::pendingCount() const
     return m_pending.size();
 }
 
-QImage ThumbnailService::lookup(const QString &videoPath, bool *needsGeneration) const
+void ThumbnailService::setItemMetadata(const QString &filePath, const ThumbnailMeta &meta)
 {
-    if (needsGeneration)
-        *needsGeneration = false;
+    if (filePath.isEmpty())
+        return;
+    QMutexLocker locker(&m_mutex);
+    m_meta.insert(filePath, meta);
+}
 
+void ThumbnailService::clearItemMetadata()
+{
+    QMutexLocker locker(&m_mutex);
+    m_meta.clear();
+    m_memory.clear();
+    m_failed.clear();
+}
+
+QImage ThumbnailService::lookup(const QString &videoPath) const
+{
     if (videoPath.isEmpty() || !m_cache)
         return m_stub;
 
@@ -169,8 +195,19 @@ QImage ThumbnailService::lookup(const QString &videoPath, bool *needsGeneration)
             return m_stub;
     }
 
-    if (m_cache->contains(videoPath)) {
-        const QImage image = m_cache->load(videoPath);
+    qint64 fileSize = -1;
+    qint64 lastModified = -1;
+    {
+        QMutexLocker locker(&m_mutex);
+        const auto it = m_meta.constFind(videoPath);
+        if (it != m_meta.constEnd()) {
+            fileSize = it->fileSize;
+            lastModified = it->lastModified;
+        }
+    }
+
+    if (m_cache->contains(videoPath, fileSize, lastModified)) {
+        const QImage image = m_cache->load(videoPath, fileSize, lastModified);
         if (!image.isNull()) {
             QMutexLocker locker(&m_mutex);
             m_memory.insert(videoPath, new QImage(image), 1);
@@ -178,43 +215,76 @@ QImage ThumbnailService::lookup(const QString &videoPath, bool *needsGeneration)
         }
     }
 
-    // Extraction is switched off: only poster files and cached covers remain.
-    if (!m_generationEnabled.load(std::memory_order_relaxed))
-        return m_stub;
-
-    {
-        QMutexLocker locker(&m_mutex);
-        if (m_pending.contains(videoPath))
-            return m_stub;
-        m_pending.insert(videoPath);
-    }
-
-    if (needsGeneration)
-        *needsGeneration = true;
     return m_stub;
 }
 
-void ThumbnailService::requestGeneration(const QString &videoPath)
+int ThumbnailService::requestMissingGeneration(const QStringList &videoPaths)
 {
-    if (videoPath.isEmpty())
-        return;
-
     if (!m_generationEnabled.load(std::memory_order_relaxed))
-        return;
+        return 0;
 
-    if (m_ffmpegPath.isEmpty() || !QFileInfo::exists(m_ffmpegPath)) {
-        qCDebug(lcThumb) << "no usable ffmpeg, skipping cover for" << videoPath;
-        QMutexLocker locker(&m_mutex);
-        m_pending.remove(videoPath);
-        m_failed.insert(videoPath);
-        return;
+    int scheduled = 0;
+    for (const QString &path : videoPaths) {
+        if (path.isEmpty())
+            continue;
+
+        ThumbnailMeta meta;
+        bool haveMeta = false;
+        {
+            QMutexLocker locker(&m_mutex);
+            if (m_pending.contains(path) || m_failed.contains(path) || m_memory.contains(path))
+                continue;
+            const auto it = m_meta.constFind(path);
+            if (it == m_meta.constEnd())
+                continue;
+            meta = it.value();
+            haveMeta = true;
+        }
+        if (!haveMeta)
+            continue;
+
+        if (m_cache && m_cache->contains(path, meta.fileSize, meta.lastModified))
+            continue;
+
+        // Sidecar poster: read and cache it directly, no ffmpeg needed.
+        if (!meta.posterPath.isEmpty()) {
+            const QImage poster(meta.posterPath);
+            if (poster.isNull()) {
+                QMutexLocker locker(&m_mutex);
+                m_failed.insert(path);
+                continue;
+            }
+            const QImage cover = normalizeCover(poster);
+            if (m_cache && m_cache->store(path, meta.fileSize, meta.lastModified, cover)) {
+                QMutexLocker locker(&m_mutex);
+                m_memory.insert(path, new QImage(cover), 1);
+                ++scheduled;
+            }
+            continue;
+        }
+
+        // No poster: grab a frame with ffmpeg on the worker pool.
+        if (m_ffmpegPath.isEmpty() || !QFileInfo::exists(m_ffmpegPath)) {
+            QMutexLocker locker(&m_mutex);
+            m_failed.insert(path);
+            continue;
+        }
+
+        {
+            QMutexLocker locker(&m_mutex);
+            m_pending.insert(path);
+        }
+        const QString outputPath = m_cache->tempFileFor(path, meta.fileSize, meta.lastModified);
+        m_pool.start(new ThumbnailJob(this, path, m_ffmpegPath, outputPath, meta.fileSize, meta.lastModified));
+        ++scheduled;
     }
 
-    const QString outputPath = m_cache->pathFor(videoPath) + QStringLiteral(".part.jpg");
-    m_pool.start(new ThumbnailJob(this, videoPath, m_ffmpegPath, outputPath));
+    if (scheduled > 0)
+        emit pendingCountChanged();
+    return scheduled;
 }
 
-void ThumbnailService::completeGeneration(const QString &videoPath, const QImage &image)
+void ThumbnailService::completeGeneration(const QString &videoPath, qint64 fileSize, qint64 lastModified, const QImage &image)
 {
     // The user switched extraction off while this job was running: drop the
     // result instead of writing a cover they asked not to generate.
@@ -236,7 +306,7 @@ void ThumbnailService::completeGeneration(const QString &videoPath, const QImage
     }
 
     if (!image.isNull() && m_cache)
-        m_cache->store(videoPath, image);
+        m_cache->store(videoPath, fileSize, lastModified, image);
     else
         qCDebug(lcThumb) << "no frame extracted for" << videoPath;
 

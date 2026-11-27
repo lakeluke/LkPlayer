@@ -213,6 +213,16 @@ Item {
                                     onClicked: App.rescanFull()
                                 }
                             }
+
+                            Text {
+                                width: parent.width
+                                topPadding: 4
+                                text: App.lastScanTime.length > 0
+                                      ? "上次扫描：" + App.lastScanTime
+                                      : "尚未扫描过媒体库"
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontCaption
+                            }
                         }
                     }
                 }
@@ -648,6 +658,33 @@ Item {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: App.clearThumbnailCache()
+                                }
+                            }
+
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 110
+                                height: 34
+                                radius: 17
+                                color: genCoversArea.containsMouse ? Theme.surfaceHover : Theme.glass
+                                border.width: 1
+                                border.color: Theme.border
+                                opacity: App.settings.generateCovers ? 1 : 0.5
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "生成缺失封面"
+                                    color: Theme.textSecondary
+                                    font.pixelSize: Theme.fontCaption
+                                }
+
+                                MouseArea {
+                                    id: genCoversArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: App.settings.generateCovers
+                                    onClicked: App.generateAllCovers()
                                 }
                             }
                         }

@@ -32,6 +32,27 @@ Item {
         App.setVideoVisible(visible);
     }
 
+    // Keep the floating window inside the page while dragging or resizing.
+    function clampPosition() {
+        if (!parent)
+            return;
+        const m = Theme.spacingLarge;
+        x = Math.max(m, Math.min(x, parent.width - width - m));
+        y = Math.max(m, Math.min(y, parent.height - height - m));
+    }
+
+    // Follow page resizes so the mini player never ends up off-screen.
+    Connections {
+        target: mini.parent
+        enabled: mini.parent !== null
+        function onWidthChanged() {
+            mini.clampPosition();
+        }
+        function onHeightChanged() {
+            mini.clampPosition();
+        }
+    }
+
     onXChanged: reportGeometry()
     onYChanged: reportGeometry()
     onWidthChanged: reportGeometry()
@@ -153,13 +174,38 @@ Item {
         }
     }
 
-    // Clicking the picture itself returns to the full page.
+    // Dragging the picture moves the mini player; a double-click returns to the
+    // full player page.
     MouseArea {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
         height: mini.videoHeight
         cursorShape: Qt.PointingHandCursor
-        onClicked: mini.expandRequested()
+
+        property real startX: 0
+        property real startY: 0
+        property real startGlobalX: 0
+        property real startGlobalY: 0
+
+        onPressed: mouse => {
+            startX = mini.x;
+            startY = mini.y;
+            const p = mini.mapToItem(null, mouse.x, mouse.y);
+            startGlobalX = p.x;
+            startGlobalY = p.y;
+        }
+        onPositionChanged: mouse => {
+            if (!pressed)
+                return;
+            // mouse.x/y are relative to this MouseArea, which moves with the
+            // mini player; converting to scene coordinates avoids the feedback
+            // that otherwise halves the drag distance.
+            const p = mini.mapToItem(null, mouse.x, mouse.y);
+            mini.x = startX + p.x - startGlobalX;
+            mini.y = startY + p.y - startGlobalY;
+            mini.clampPosition();
+        }
+        onDoubleClicked: mini.expandRequested()
     }
 }

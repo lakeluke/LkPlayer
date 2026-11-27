@@ -1,6 +1,50 @@
 #include "model/MediaItemModel.h"
 
+#include <algorithm>
+
 #include "core/PathUtils.h"
+
+namespace {
+
+QString sortKeyFor(const MediaItem &item, const QString &field)
+{
+    if (field == QLatin1String("title"))
+        return item.title.isEmpty() ? item.fileName : item.title;
+    if (field == QLatin1String("name"))
+        return item.fileName;
+    if (field == QLatin1String("path"))
+        return item.filePath;
+    return item.fileName;
+}
+
+int compareItems(const MediaItem &a, const MediaItem &b, const QString &field)
+{
+    if (field == QLatin1String("scan")) {
+        if (a.scanOrder != b.scanOrder)
+            return a.scanOrder < b.scanOrder ? -1 : 1;
+        return 0;
+    }
+    if (field == QLatin1String("duration")) {
+        if (a.duration != b.duration)
+            return a.duration < b.duration ? -1 : 1;
+        return 0;
+    }
+    if (field == QLatin1String("modified")) {
+        if (a.lastModified != b.lastModified)
+            return a.lastModified < b.lastModified ? -1 : 1;
+        return 0;
+    }
+    if (field == QLatin1String("release")) {
+        // Missing year sorts as "0" (oldest) so it lands last in the natural
+        // newest-first order and first in oldest-first.
+        const QString ka = a.year.trimmed().isEmpty() ? QStringLiteral("0") : a.year.trimmed();
+        const QString kb = b.year.trimmed().isEmpty() ? QStringLiteral("0") : b.year.trimmed();
+        return QString::compare(ka, kb);
+    }
+    return QString::localeAwareCompare(sortKeyFor(a, field), sortKeyFor(b, field));
+}
+
+} // namespace
 
 MediaItemModel::MediaItemModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -52,6 +96,10 @@ QVariant MediaItemModel::data(const QModelIndex &index, int role) const
         return item.plot;
     case YearRole:
         return item.year;
+    case PremieredRole:
+        return item.premiered;
+    case ModifiedRole:
+        return item.lastModified;
     case DurationRole:
         return item.duration;
     case DurationTextRole:
@@ -92,6 +140,8 @@ QHash<int, QByteArray> MediaItemModel::roleNames() const
         { ActorsRole, "actors" },
         { PlotRole, "plot" },
         { YearRole, "year" },
+        { PremieredRole, "premiered" },
+        { ModifiedRole, "lastModified" },
         { DurationRole, "durationSeconds" },
         { DurationTextRole, "durationText" },
         { SizeTextRole, "sizeText" },
@@ -122,10 +172,36 @@ void MediaItemModel::addItems(const MediaItemList &items)
     const int first = m_items.size();
     beginInsertRows(QModelIndex(), first, first + items.size() - 1);
     for (const MediaItem &item : items) {
-        m_pathIndex.insert(item.filePath, m_items.size());
-        m_items.append(item);
+        MediaItem copy = item;
+        copy.scanOrder = m_items.size();
+        m_pathIndex.insert(copy.filePath, m_items.size());
+        m_items.append(copy);
     }
     endInsertRows();
+    emit countChanged();
+}
+
+void MediaItemModel::sortBy(const QString &field, bool ascending)
+{
+    if (m_items.size() < 2)
+        return;
+
+    MediaItemList ordered = m_items;
+    std::stable_sort(ordered.begin(), ordered.end(),
+                     [field, ascending](const MediaItem &a, const MediaItem &b) {
+                         const int cmp = compareItems(a, b, field);
+                         return ascending ? cmp < 0 : cmp > 0;
+                     });
+
+    beginResetModel();
+    m_items = ordered;
+    endResetModel();
+
+    m_pathIndex.clear();
+    m_pathIndex.reserve(m_items.size());
+    for (int row = 0; row < m_items.size(); ++row)
+        m_pathIndex.insert(m_items.at(row).filePath, row);
+
     emit countChanged();
 }
 
@@ -189,6 +265,7 @@ QVariantMap MediaItemModel::toMap(const MediaItem &item) const
     map.insert(QStringLiteral("nfoPath"), item.nfoPath);
     map.insert(QStringLiteral("plot"), item.plot);
     map.insert(QStringLiteral("year"), item.year);
+    map.insert(QStringLiteral("premiered"), item.premiered);
     map.insert(QStringLiteral("tags"), item.tags);
     map.insert(QStringLiteral("genres"), item.genres);
     map.insert(QStringLiteral("actors"), item.actors);

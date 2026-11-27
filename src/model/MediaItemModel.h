@@ -33,6 +33,8 @@ public:
         ActorsRole,
         PlotRole,
         YearRole,
+        PremieredRole,
+        ModifiedRole,
         DurationRole,
         DurationTextRole,
         SizeTextRole,
@@ -63,6 +65,12 @@ public:
     Q_INVOKABLE int indexOfPath(const QString &filePath) const;
 
     Q_INVOKABLE QVariantMap item(int row) const;
+
+    /**
+     * Reorders the flat list. `field` is one of "scan" (default traversal
+     * order), "title", "name", "path" or "duration".
+     */
+    Q_INVOKABLE void sortBy(const QString &field, bool ascending);
 
 signals:
     void countChanged();

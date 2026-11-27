@@ -10,6 +10,7 @@
 #include <QSet>
 #include <QTimer>
 #include <QUrl>
+#include <QtConcurrent/QtConcurrent>
 
 #include "app/AppPaths.h"
 #include "core/LibraryScanner.h"
@@ -54,6 +55,9 @@ AppController::AppController(QObject *parent)
 
     m_scanner = new LibraryScanner(this);
     connect(m_scanner, &LibraryScanner::scanStarted, this, [this]() {
+        // Drop stale metadata; onItemsReady() re-registers it as results arrive.
+        m_thumbService->clearItemMetadata();
+
         // Background checks are invisible: they must not flip the scanning
         // indicator or overwrite the status line.
         if (m_scanner->isBackground())
@@ -103,34 +107,32 @@ AppController::AppController(QObject *parent)
 
     m_player = PlayerFactory::create(m_settings->playMode(), m_settings->ffplayPath(), ensureMpvEngine(), this);
     connect(m_player, &PlayerController::errorChanged, this, &AppController::playerChanged);
+    if (m_player)
+        m_player->setVolume(m_settings->volume());
 
     m_thumbService->setFfmpegPath(m_settings->ffmpegPath());
     m_thumbService->setGenerationEnabled(m_settings->generateCovers());
     m_thumbCache->prune();
 
-    // Periodic, very cheap re-check: only directory timestamps are compared, so
-    // adding a file behind the app's back shows up without a full rescan.
-    m_verifyTimer = new QTimer(this);
-    m_verifyTimer->setInterval(3 * 60 * 1000);
-    connect(m_verifyTimer, &QTimer::timeout, this, &AppController::verifyLibrary);
-    m_verifyTimer->start();
-
     refreshToolError();
 
-    const QString root = m_settings->libraryRoot();
-    if (!root.isEmpty() && QFileInfo(root).isDir()) {
-        // Defer the initial scan until the event loop is running.
-        QMetaObject::invokeMethod(this, &AppController::rescan, Qt::QueuedConnection);
-    }
+    // Never scan automatically: restore the cached index (LoadOnly) and only
+    // prompt the user when there is nothing cached yet.
+    QMetaObject::invokeMethod(this, &AppController::loadLibrary, Qt::QueuedConnection);
 }
 
-AppController::~AppController() = default;
+AppController::~AppController()
+{
+    // Flush any debounced writes (e.g. volume) that are still pending on exit.
+    if (m_settings)
+        m_settings->sync();
+}
 
 void AppController::wireSettings()
 {
     connect(m_settings, &SettingsStore::libraryRootChanged, this, [this]() {
         emit libraryRootChanged();
-        startScan();
+        loadLibrary();
     });
     connect(m_settings, &SettingsStore::ffmpegDirChanged, this, [this]() {
         m_thumbService->setFfmpegPath(m_settings->ffmpegPath());
@@ -146,6 +148,7 @@ void AppController::wireSettings()
         const QString mode = m_settings->viewMode();
         if (mode == m_viewMode)
             return;
+        commitGridScroll();
         m_viewMode = mode;
         m_mediaModel->setViewMode(mode);
         rebuildBreadcrumb();
@@ -221,13 +224,6 @@ void AppController::attachWindow(QObject *window)
     qCInfo(lcApp) << "attached to window, native handle" << m_windowHandle;
     if (m_player)
         m_player->setWindowHandle(m_windowHandle);
-
-    // Coming back to the app is a good moment to check whether the library
-    // changed while it was in the background.
-    connect(quickWindow, &QQuickWindow::activeChanged, this, [this]() {
-        if (m_window && m_window->isActive())
-            verifyLibrary();
-    });
 }
 
 void AppController::setLibraryRoot(const QString &path)
@@ -243,6 +239,69 @@ void AppController::setLibraryRoot(const QString &path)
 void AppController::setViewMode(const QString &mode)
 {
     m_settings->setViewMode(mode);
+}
+
+void AppController::setGridSort(const QString &field)
+{
+    if (field == m_gridSortField)
+        return;
+
+    m_gridSortField = field;
+
+    // Time-like fields read better newest / longest first.
+    const bool ascending = field != QLatin1String("duration")
+                           && field != QLatin1String("modified")
+                           && field != QLatin1String("release");
+    m_mediaModel->sortBy(field, ascending);
+    emit gridSortFieldChanged();
+}
+
+void AppController::openActor(const QString &actor)
+{
+    QString name = actor.trimmed();
+    if (name.isEmpty())
+        return;
+
+    // Actors may carry a role ("Name / Role"): search by the bare name so all
+    // of the actor's appearances match regardless of the credited role.
+    const int sep = name.indexOf(QStringLiteral(" / "));
+    if (sep > 0)
+        name = name.left(sep).trimmed();
+    if (name.isEmpty())
+        return;
+
+    // Browse the whole library for this actor: clear any tag narrowing, flatten
+    // the view so folders don't hide matches, then filter by the actor's name.
+    m_mediaModel->setSelectedTags(QStringList());
+    setViewMode(QStringLiteral("flat"));
+    m_mediaModel->setSearchText(name);
+    emit actorBrowseRequested();
+}
+
+void AppController::reportGridScroll(int contentY)
+{
+    m_lastReportedScroll = contentY;
+}
+
+void AppController::commitGridScroll()
+{
+    const QString key = gridScrollKey();
+    if (m_lastReportedScroll > 0)
+        m_gridScrollPositions.insert(key, m_lastReportedScroll);
+    else
+        m_gridScrollPositions.remove(key);
+}
+
+int AppController::gridScrollForCurrentFolder() const
+{
+    return m_gridScrollPositions.value(gridScrollKey(), 0);
+}
+
+QString AppController::gridScrollKey() const
+{
+    return (m_viewMode == QLatin1String("drill") && !m_currentFolder.isEmpty())
+               ? QDir::cleanPath(m_currentFolder)
+               : QStringLiteral("flat");
 }
 
 void AppController::setSelectedTags(const QStringList &tags)
@@ -334,6 +393,47 @@ void AppController::startScan()
     m_scanner->start();
 }
 
+void AppController::loadLibrary()
+{
+    const QString root = m_settings->libraryRoot();
+
+    m_currentFolder.clear();
+    m_mediaModel->setSelectedTags(QStringList());
+    m_mediaModel->setSearchText(QString());
+    resetLibraryView();
+
+    if (root.isEmpty() || !QFileInfo(root).isDir()) {
+        if (!root.isEmpty())
+            setError(QStringLiteral("媒体库目录不可用：%1").arg(root));
+        else
+            setStatus(QStringLiteral("尚未设置媒体库目录"));
+        updateLastScanTime();
+        return;
+    }
+
+    m_childFolders->setRootPath(root);
+    m_scanner->setRootPath(root);
+    m_scanner->setIndexFile(AppPaths::scanIndexFile(root));
+    m_scanner->startWithMode(LibraryScanner::Mode::LoadOnly);
+    updateLastScanTime();
+}
+
+void AppController::updateLastScanTime()
+{
+    QString text;
+    const QString root = m_settings->libraryRoot();
+    if (!root.isEmpty()) {
+        const QFileInfo info(AppPaths::scanIndexFile(root));
+        if (info.exists())
+            text = info.lastModified().toString(QStringLiteral("yyyy-MM-dd HH:mm"));
+    }
+
+    if (text == m_lastScanTime)
+        return;
+    m_lastScanTime = text;
+    emit lastScanTimeChanged();
+}
+
 void AppController::resetLibraryView()
 {
     m_itemModel->clear();
@@ -356,6 +456,12 @@ void AppController::onItemsReady(const MediaItemList &items)
     for (const MediaItem &item : items) {
         if (!m_folderCoverHints.contains(item.folderPath))
             m_folderCoverHints.insert(item.folderPath, coverUrlFor(item));
+
+        ThumbnailMeta meta;
+        meta.posterPath = item.posterPath;
+        meta.fileSize = item.fileSize;
+        meta.lastModified = item.lastModified;
+        m_thumbService->setItemMetadata(item.filePath, meta);
     }
 
     if (!m_folderCoverHints.isEmpty())
@@ -365,6 +471,14 @@ void AppController::onItemsReady(const MediaItemList &items)
 void AppController::onFolderItemsChanged(const QString &folderPath, const MediaItemList &items)
 {
     m_itemModel->replaceFolder(folderPath, items);
+
+    for (const MediaItem &item : items) {
+        ThumbnailMeta meta;
+        meta.posterPath = item.posterPath;
+        meta.fileSize = item.fileSize;
+        meta.lastModified = item.lastModified;
+        m_thumbService->setItemMetadata(item.filePath, meta);
+    }
 
     if (items.isEmpty()) {
         m_folderCoverHints.remove(folderPath);
@@ -400,10 +514,6 @@ void AppController::onStructureReady(const FolderNodeList &folders)
 
 void AppController::onScanFinished(int totalVideos, bool cancelled)
 {
-    // Whatever just ran, the library is current: give the activation triggered
-    // check a moment of rest.
-    m_lastVerifyMs = QDateTime::currentMSecsSinceEpoch();
-
     if (m_restartScan) {
         m_restartScan = false;
         const bool full = m_restartFull;
@@ -415,6 +525,19 @@ void AppController::onScanFinished(int totalVideos, bool cancelled)
         return;
     }
 
+    // Load-only never touched the disk; if nothing was cached, ask the user
+    // whether to run a real scan.
+    if (m_scanner->mode() == LibraryScanner::Mode::LoadOnly) {
+        const QString indexFile = AppPaths::scanIndexFile(m_settings->libraryRoot());
+        const bool needsScan = !QFileInfo(indexFile).exists();
+        if (needsScan != m_needsScan) {
+            m_needsScan = needsScan;
+            emit needsScanChanged();
+        }
+        updateLastScanTime();
+        return;
+    }
+
     if (m_scanner->isBackground()) {
         qCInfo(lcApp) << "background check finished, videos:" << totalVideos;
         return;
@@ -422,6 +545,8 @@ void AppController::onScanFinished(int totalVideos, bool cancelled)
 
     m_scanning = false;
     emit scanningChanged();
+
+    updateLastScanTime();
 
     if (cancelled) {
         setStatus(QStringLiteral("扫描已取消"));
@@ -433,31 +558,13 @@ void AppController::onScanFinished(int totalVideos, bool cancelled)
     qCInfo(lcApp) << "scan finished, videos:" << totalVideos << "folders:" << m_folderNodes.size();
 }
 
-void AppController::verifyLibrary()
-{
-    if (!m_scanner || m_scanner->isRunning())
-        return;
-    if (m_settings->libraryRoot().isEmpty())
-        return;
-    // The check stats every folder, so only run it while the user is actually
-    // looking at the app instead of keeping a spinning disk busy in the
-    // background.
-    if (m_window && !m_window->isActive())
-        return;
-
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (now - m_lastVerifyMs < 30000)
-        return;
-    m_lastVerifyMs = now;
-
-    m_scanner->startWithMode(LibraryScanner::Mode::Verify);
-}
-
 void AppController::openFolder(const QString &folderPath)
 {
     const QString cleaned = QDir::cleanPath(folderPath);
     if (cleaned.isEmpty())
         return;
+
+    commitGridScroll();
 
     if (m_viewMode != QLatin1String("drill")) {
         m_viewMode = QStringLiteral("drill");
@@ -485,6 +592,7 @@ void AppController::navigateUp()
     if (parent.isEmpty())
         return;
 
+    commitGridScroll();
     m_currentFolder = parent;
     m_settings->setLastFolder(parent);
     updateCurrentFolderModel();
@@ -498,6 +606,8 @@ void AppController::navigateToBreadcrumb(int index)
     const QString path = entry.value(QStringLiteral("path")).toString();
     if (path.isEmpty())
         return;
+
+    commitGridScroll();
 
     if (m_viewMode != QLatin1String("drill")) {
         m_viewMode = QStringLiteral("drill");
@@ -516,6 +626,7 @@ void AppController::goHome()
 {
     const QString root = QDir(QDir::cleanPath(m_settings->libraryRoot())).absolutePath();
     if (m_viewMode == QLatin1String("drill")) {
+        commitGridScroll();
         m_currentFolder = root;
         m_settings->setLastFolder(root);
         updateCurrentFolderModel();
@@ -589,18 +700,42 @@ void AppController::rebuildPlayer()
     if (m_player && m_player->mode() == mode)
         return;
 
+    // A backend switch tears the old player down. Remember what it was playing
+    // so the new backend can resume the same file: otherwise the fresh player
+    // starts idle with no file loaded and the play button becomes a no-op.
+    const bool wasActive = m_player && m_player->isActive();
+    const QString resumePath = m_player ? m_player->filePath() : QString();
+    const QString resumeTitle = m_player ? m_player->title() : QString();
+    const double resumePosition = m_player ? m_player->position() : 0.0;
+
     if (m_player) {
         m_player->stop();
         m_player->deleteLater();
     }
 
+    // Leaving the embedded backend detaches the render context that MpvItem
+    // owns. Tell the shared engine it is gone so the next embedded playback
+    // waits for a fresh context instead of loading into a dead one. (MpvItem
+    // also reports the teardown, but only when it actually renders a frame; on
+    // a hidden page that never happens.)
+    if (mode != QLatin1String("embedded") && m_mpvEngine)
+        m_mpvEngine->notifyRenderContextLost();
+
     m_player = PlayerFactory::create(mode, m_settings->ffplayPath(), ensureMpvEngine(), this);
     if (m_player) {
         m_player->setWindowHandle(m_windowHandle);
         connect(m_player, &PlayerController::errorChanged, this, &AppController::playerChanged);
+        m_player->setVolume(m_settings->volume());
     }
     refreshToolError();
     emit playerChanged();
+
+    // Resume after playerChanged so MpvItem has already adopted the new player
+    // and can hand its render context over before the load is attempted.
+    if (m_player && wasActive && !resumePath.isEmpty()) {
+        m_player->setVideoVisible(true);
+        m_player->openAt(resumePath, resumeTitle, resumePosition);
+    }
 }
 
 MpvEngine *AppController::ensureMpvEngine()
@@ -686,8 +821,19 @@ void AppController::stopPlayback()
 
 void AppController::togglePlayPause()
 {
-    if (m_player)
-        m_player->togglePlayPause();
+    if (!m_player)
+        return;
+
+    // A backend switch leaves the player idle with no file loaded; fall back to
+    // the current selection so the play button still does something useful.
+    if (!m_player->isActive() && m_player->filePath().isEmpty()) {
+        const QString path = m_currentItem.value(QStringLiteral("filePath")).toString();
+        if (!path.isEmpty())
+            playItem(path);
+        return;
+    }
+
+    m_player->togglePlayPause();
 }
 
 void AppController::seekTo(double seconds)
@@ -704,6 +850,7 @@ void AppController::seekRelative(double deltaSeconds)
 
 void AppController::setVolume(int volume)
 {
+    m_settings->setVolume(volume);
     if (auto *backend = controllablePlayer())
         backend->setVolume(volume);
 }
@@ -789,6 +936,34 @@ void AppController::clearThumbnailCache()
 {
     const int removed = m_thumbService->clearCache();
     setStatus(QStringLiteral("已清理 %1 个封面缓存").arg(removed));
+}
+
+void AppController::generateAllCovers()
+{
+    const int rows = m_itemModel->rowCount();
+    QStringList paths;
+    paths.reserve(rows);
+    for (int i = 0; i < rows; ++i) {
+        const MediaItem *item = m_itemModel->itemAt(i);
+        if (item && !item->filePath.isEmpty())
+            paths << item->filePath;
+    }
+
+    setStatus(QStringLiteral("正在后台生成封面…"));
+
+    // The missing-cover scan reads the SQLite cache (and poster files) and can
+    // take a while for a large library, so run it off the GUI thread. The task
+    // is fire-and-forget (its result is reported back through the queued
+    // invokeMethod below), so the QFuture is intentionally not tracked.
+    [[maybe_unused]] const auto coversFuture = QtConcurrent::run([this, paths = std::move(paths)]() {
+        const int queued = m_thumbService->requestMissingGeneration(paths);
+        QMetaObject::invokeMethod(this, [this, queued]() {
+            if (queued > 0)
+                setStatus(QStringLiteral("已加入 %1 个封面生成任务").arg(queued));
+            else
+                setStatus(QStringLiteral("没有缺失的封面需要生成"));
+        }, Qt::QueuedConnection);
+    });
 }
 
 QString AppController::checkToolDirectory(const QString &dir) const

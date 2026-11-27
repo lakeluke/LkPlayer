@@ -5,6 +5,7 @@
 #include <QLoggingCategory>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTimer>
 
 #include "app/AppPaths.h"
 #include "core/PathUtils.h"
@@ -19,6 +20,7 @@ const QString kThemeMode = QStringLiteral("ui/theme");
 const QString kViewMode = QStringLiteral("ui/viewMode");
 const QString kLastFolder = QStringLiteral("ui/lastFolder");
 const QString kGenerateCovers = QStringLiteral("thumbnails/generate");
+const QString kVolume = QStringLiteral("player/volume");
 
 bool isPlayMode(const QString &mode)
 {
@@ -31,6 +33,11 @@ SettingsStore::SettingsStore(QObject *parent)
     : QObject(parent)
 {
     m_configFilePath = AppPaths::settingsFile();
+
+    m_syncTimer = new QTimer(this);
+    m_syncTimer->setSingleShot(true);
+    m_syncTimer->setInterval(400);
+    connect(m_syncTimer, &QTimer::timeout, this, &SettingsStore::sync);
 }
 
 void SettingsStore::load()
@@ -58,6 +65,8 @@ void SettingsStore::load()
 
     m_generateCovers = settings.value(kGenerateCovers, true).toBool();
 
+    m_volume = qBound(0, settings.value(kVolume, 100).toInt(), 100);
+
     qCInfo(lcSettings) << "settings loaded from" << m_configFilePath;
 
     emit libraryRootChanged();
@@ -67,6 +76,7 @@ void SettingsStore::load()
     emit viewModeChanged();
     emit lastFolderChanged();
     emit generateCoversChanged();
+    emit volumeChanged();
     revalidate();
 }
 
@@ -80,6 +90,7 @@ void SettingsStore::sync()
     settings.setValue(kViewMode, m_viewMode);
     settings.setValue(kLastFolder, m_lastFolder);
     settings.setValue(kGenerateCovers, m_generateCovers);
+    settings.setValue(kVolume, m_volume);
     settings.sync();
 
     if (settings.status() != QSettings::NoError)
@@ -154,6 +165,18 @@ void SettingsStore::setGenerateCovers(bool enabled)
     m_generateCovers = enabled;
     emit generateCoversChanged();
     sync();
+}
+
+void SettingsStore::setVolume(int volume)
+{
+    const int clamped = qBound(0, volume, 100);
+    if (clamped == m_volume)
+        return;
+    m_volume = clamped;
+    emit volumeChanged();
+    // Volume changes while dragging fire dozens of times a second; write the
+    // file once the drag settles instead of on every step.
+    m_syncTimer->start();
 }
 
 QString SettingsStore::ffmpegPath() const

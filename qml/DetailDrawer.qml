@@ -96,8 +96,10 @@ Item {
                 Repeater {
                     model: root.hasItem ? [
                         {
-                            label: "年份",
-                            value: root.item.year
+                            label: "首映日期",
+                            value: root.item.premiered && root.item.premiered.length > 0
+                                   ? root.item.premiered
+                                   : (root.item.year && root.item.year.length > 0 ? root.item.year : "未知")
                         },
                         {
                             label: "时长",
@@ -211,14 +213,47 @@ Item {
                 Repeater {
                     model: root.hasItem && root.item.actors ? root.item.actors : []
 
-                    delegate: Text {
+                    delegate: Row {
                         required property var modelData
 
                         width: column.width
-                        text: "· " + modelData
-                        color: Theme.textSecondary
-                        font.pixelSize: Theme.fontCaption
-                        elide: Text.ElideRight
+                        spacing: Theme.spacingSmall
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - actorButton.width - parent.spacing
+                            text: "· " + modelData
+                            color: Theme.textSecondary
+                            font.pixelSize: Theme.fontCaption
+                            elide: Text.ElideRight
+                        }
+
+                        Rectangle {
+                            id: actorButton
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 22
+                            width: actorLabel.implicitWidth + 18
+                            radius: 11
+                            color: actorArea.containsMouse ? Theme.surfaceHover : Theme.glass
+                            border.width: 1
+                            border.color: Theme.border
+
+                            Text {
+                                id: actorLabel
+                                anchors.centerIn: parent
+                                text: "查看作品"
+                                color: actorArea.containsMouse ? Theme.accentSoft : Theme.textSecondary
+                                font.pixelSize: 10
+                            }
+
+                            MouseArea {
+                                id: actorArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: App.openActor(modelData)
+                            }
+                        }
                     }
                 }
             }

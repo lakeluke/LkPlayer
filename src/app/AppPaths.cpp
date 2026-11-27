@@ -59,13 +59,13 @@ QString logDir()
     return dir;
 }
 
-QString coverCacheDir()
+QString coverDatabaseFile()
 {
-    const QString base = isPortable() ? dataRoot()
-                                      : QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    const QString dir = QDir(base).absoluteFilePath(QStringLiteral("covers"));
+    // Covers are durable state, not OS-managed cache, so they live in the
+    // application data directory and travel with portable installs.
+    const QString dir = dataRoot();
     QDir().mkpath(dir);
-    return dir;
+    return QDir(dir).absoluteFilePath(QStringLiteral("covers.db"));
 }
 
 QString scanIndexFile(const QString &rootPath)

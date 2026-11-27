@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSize>
 #include <QString>
 
 struct mpv_handle;
@@ -57,6 +58,13 @@ public:
     void setMuted(bool muted);
     void setSpeed(double factor);
 
+    /**
+     * Tells mpv the size of the widget it is painted into so the video can be
+     * zoomed to *cover* the area (no letterbox bars). Called by MpvItem when
+     * its geometry changes.
+     */
+    void updateVideoFit(const QSize &areaSize);
+
 signals:
     void positionChanged(double seconds);
     void durationChanged(double seconds);
@@ -71,9 +79,14 @@ private:
     void drainEvents();
     void handlePropertyChange(mpv_event_property *property);
     void reportError(const QString &message);
+    void applyVideoFit();
 
     mpv_handle *m_mpv = nullptr;
     QTimer *m_pollTimer = nullptr;
     QString m_error;
     bool m_renderReady = false;
+    /** Native video size reported by mpv (0 until a file is loaded). */
+    QSize m_videoSize;
+    /** Size of the widget mpv renders into. */
+    QSize m_areaSize;
 };

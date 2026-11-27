@@ -23,8 +23,8 @@ QString settingsFile();
 /** Directory holding `lkplayer.log`. */
 QString logDir();
 
-/** Directory holding the generated covers. */
-QString coverCacheDir();
+/** SQLite database holding the generated cover images. */
+QString coverDatabaseFile();
 
 /**
  * File the scan index of `rootPath` is cached in. One file per library root, so

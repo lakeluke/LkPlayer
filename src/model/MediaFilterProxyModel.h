@@ -47,6 +47,12 @@ public:
 
     Q_INVOKABLE QString filePathAt(int row) const;
 
+    /**
+     * Sorts the visible grid. `field` is one of "scan" (source traversal
+     * order), "title", "name", "path", "duration", "modified" or "release".
+     */
+    Q_INVOKABLE void sortBy(const QString &field, bool ascending);
+
 signals:
     void countChanged();
     void viewModeChanged();

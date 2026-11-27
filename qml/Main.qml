@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import LkPlayer
 
 Window {
@@ -30,6 +31,13 @@ Window {
         target: App
         function onPlaybackRequested(filePath) {
             pageHost.navigateTo("player");
+        }
+    }
+
+    Connections {
+        target: App
+        function onActorBrowseRequested() {
+            pageHost.navigateTo("library");
         }
     }
 
@@ -180,11 +188,13 @@ Window {
             }
         }
 
-        // Double-click toggles fullscreen. Only the double-click is acted on; a
-        // single click has nothing else to consume it.
+        // Double-click toggles fullscreen — but only on the player page. On the
+        // library page the picture lives inside the mini player, whose own mouse
+        // area handles dragging and the double-click-to-expand instead.
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton
+            enabled: pageHost.currentPage === "player"
             onDoubleClicked: App.toggleFullscreen()
         }
     }
@@ -266,14 +276,69 @@ Window {
         hideControlsTimer.restart();
     }
 
+    // Fullscreen title. Pure text (no panel) with an outline + drop shadow so it
+    // stays legible over any frame; it rides the same reveal/hide as the bar.
+    Item {
+        id: fullscreenTitle
+        anchors.top: parent.top
+        anchors.topMargin: Theme.spacingLarge
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: parent.width - 2 * Theme.spacingLarge
+        height: 34
+        z: 650
+        visible: pageHost.currentPage === "player" && App.fullscreen
+        opacity: window.controlsVisible ? 1 : 0
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 180
+            }
+        }
+
+        readonly property string title: App.currentItem
+                                            ? (App.currentItem.title || App.currentItem.fileName || "")
+                                            : ""
+
+        // Drop shadow: a dark copy nudged down-right, drawn under the main text.
+        Text {
+            anchors.fill: parent
+            anchors.leftMargin: 2
+            anchors.topMargin: 2
+            text: fullscreenTitle.title
+            color: Qt.rgba(0, 0, 0, 0.5)
+            font.pixelSize: Theme.fontBody
+            font.weight: Font.DemiBold
+            elide: Text.ElideMiddle
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        Text {
+            anchors.fill: parent
+            text: fullscreenTitle.title
+            color: "#FFFFFF"
+            style: Text.Outline
+            styleColor: Qt.rgba(0, 0, 0, 0.85)
+            font.pixelSize: Theme.fontBody
+            font.weight: Font.DemiBold
+            elide: Text.ElideMiddle
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
     PlayerControls {
         id: controls
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.margins: Theme.spacingLarge
+        // Fullscreen keeps the floating rounded bar; windowed mode docks it to
+        // the bottom edge so it spans the full width with no gap underneath.
+        anchors.leftMargin: App.fullscreen ? Theme.spacingLarge : 0
+        anchors.rightMargin: App.fullscreen ? Theme.spacingLarge : 0
+        anchors.bottomMargin: App.fullscreen ? Theme.spacingLarge : 0
         anchors.topMargin: 0
-        height: 78
+        height: 58
         z: 600
         visible: pageHost.currentPage === "player"
         opacity: (App.fullscreen && !window.controlsVisible) ? 0 : 1
@@ -314,6 +379,110 @@ Window {
         acceptedButtons: Qt.NoButton
         enabled: App.fullscreen && pageHost.currentPage === "player"
         onPositionChanged: window.revealControls()
+    }
+
+    // Scan prompt: shown when the library has never been scanned.
+    Connections {
+        target: App
+        function onNeedsScanChanged() {
+            if (App.needsScan && App.libraryRoot.length > 0)
+                scanPrompt.open();
+        }
+    }
+
+    Popup {
+        id: scanPrompt
+        anchors.centerIn: parent
+        width: 400
+        modal: true
+        focus: true
+        closePolicy: Popup.NoAutoClose
+        padding: 0
+
+        background: Rectangle {
+            radius: Theme.radiusLarge
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.border
+        }
+
+        contentItem: Column {
+            spacing: Theme.spacing
+            leftPadding: Theme.spacingLarge
+            rightPadding: Theme.spacingLarge
+            topPadding: Theme.spacingLarge
+            bottomPadding: Theme.spacingLarge
+
+            Text {
+                width: parent.width
+                text: "尚未扫描媒体库"
+                color: Theme.textPrimary
+                font.pixelSize: Theme.fontBody
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                width: parent.width
+                text: "当前媒体库目录还没有扫描记录，浏览列表会是空的。是否现在扫描？"
+                color: Theme.textSecondary
+                font.pixelSize: Theme.fontCaption
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                anchors.right: parent.right
+                spacing: Theme.spacingSmall
+                topPadding: Theme.spacing
+
+                Rectangle {
+                    width: 90
+                    height: 34
+                    radius: 17
+                    color: cancelScanArea.containsMouse ? Theme.surfaceHover : Theme.glass
+                    border.width: 1
+                    border.color: Theme.border
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "稍后"
+                        color: Theme.textSecondary
+                        font.pixelSize: Theme.fontCaption
+                    }
+
+                    MouseArea {
+                        id: cancelScanArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: scanPrompt.close()
+                    }
+                }
+
+                Rectangle {
+                    width: 90
+                    height: 34
+                    radius: 17
+                    gradient: Theme.accentGradient
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "扫描"
+                        color: "#FFFFFF"
+                        font.pixelSize: Theme.fontCaption
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            scanPrompt.close();
+                            App.rescan();
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Component {

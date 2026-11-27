@@ -28,6 +28,8 @@ QString modeName(LibraryScanner::Mode mode)
         return QStringLiteral("verify");
     case LibraryScanner::Mode::Full:
         return QStringLiteral("full");
+    case LibraryScanner::Mode::LoadOnly:
+        return QStringLiteral("loadonly");
     }
     return QStringLiteral("snapshot");
 }
@@ -202,7 +204,7 @@ void LibraryScanner::runScan()
 
     // Publish the previous result immediately: the grid is usable within
     // milliseconds even when the verification below has to touch the disk.
-    if (m_haveIndex && m_mode == Mode::Snapshot) {
+    if (m_haveIndex && (m_mode == Mode::Snapshot || m_mode == Mode::LoadOnly)) {
         int videos = 0;
         MediaItemList batch;
         batch.reserve(kBatchSize);
@@ -227,6 +229,17 @@ void LibraryScanner::runScan()
         emit indexLoaded(videos, m_index.folderCount());
         emit progressChanged(videos, videos, m_rootAbsolute);
         qCInfo(lcScan) << "published cached index:" << videos << "videos," << cached.size() << "folders";
+
+        // Load-only never walks the disk; it just restores the last result.
+        if (m_mode == Mode::LoadOnly) {
+            m_videoCount = videos;
+            return;
+        }
+    }
+
+    if (m_mode == Mode::LoadOnly) {
+        qCInfo(lcScan) << "no cached index available, nothing to load";
+        return;
     }
 
     scanDirectory(m_rootAbsolute, 0);
@@ -362,6 +375,7 @@ void LibraryScanner::scanDirectory(const QString &dirPath, int depth)
             item.genres = normalizedTags(nfo.genres);
             item.actors = nfo.actors;
             item.year = nfo.year;
+            item.premiered = nfo.premiered;
             if (item.posterPath.isEmpty())
                 item.posterPath = resolveNfoImage(absPath, nfo.posterThumb);
             if (item.fanartPath.isEmpty())

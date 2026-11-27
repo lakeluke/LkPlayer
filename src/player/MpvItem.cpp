@@ -6,6 +6,7 @@
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 #include <QQuickWindow>
+#include <QTimer>
 
 #include <mpv/client.h>
 #include <mpv/render.h>
@@ -150,6 +151,19 @@ private:
         QMetaObject::invokeMethod(item, &MpvItem::handleRenderReady, Qt::QueuedConnection);
     }
 
+    /** Hands the "context is gone" fact over to the GUI thread. */
+    void notifyContextLost()
+    {
+        if (!m_bridge)
+            return;
+
+        QMutexLocker locker(&m_bridge->mutex);
+        MpvItem *item = m_bridge->item;
+        if (!item)
+            return;
+        QMetaObject::invokeMethod(item, &MpvItem::handleRenderContextLost, Qt::QueuedConnection);
+    }
+
     void ensureContext()
     {
         QOpenGLContext *gl = QOpenGLContext::currentContext();
@@ -209,6 +223,7 @@ private:
 
         m_context = nullptr;
         m_contextHandle = nullptr;
+        notifyContextLost();
     }
 
     mpv_handle *m_handle = nullptr;
@@ -231,6 +246,17 @@ MpvItem::MpvItem(QQuickItem *parent)
     // The texture is uploaded by mpv with the correct orientation, so Qt must
     // not mirror it a second time.
     setMirrorVertically(false);
+
+    // The video is zoomed to cover this item; the debounce keeps the zoom from
+    // thrashing while the side panels animate their fold.
+    m_fitTimer = new QTimer(this);
+    m_fitTimer->setInterval(150);
+    m_fitTimer->setSingleShot(true);
+    connect(m_fitTimer, &QTimer::timeout, this, [this]() {
+        auto *mpvPlayer = qobject_cast<MpvPlayer *>(m_player.data());
+        if (mpvPlayer && mpvPlayer->engine())
+            mpvPlayer->engine()->updateVideoFit(QSize(qRound(width()), qRound(height())));
+    });
 }
 
 MpvItem::~MpvItem()
@@ -278,6 +304,15 @@ void MpvItem::handleRenderReady()
         mpvPlayer->engine()->notifyRenderReady();
 }
 
+void MpvItem::handleRenderContextLost()
+{
+    m_renderReady = false;
+
+    auto *mpvPlayer = qobject_cast<MpvPlayer *>(m_player.data());
+    if (mpvPlayer && mpvPlayer->engine())
+        mpvPlayer->engine()->notifyRenderContextLost();
+}
+
 QQuickFramebufferObject::Renderer *MpvItem::createRenderer() const
 {
     return new MpvRenderer;
@@ -302,4 +337,13 @@ mpv_handle *MpvItem::mpvHandle() const
 void MpvItem::scheduleUpdate()
 {
     update();
+}
+
+void MpvItem::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
+{
+    QQuickFramebufferObject::geometryChange(newGeometry, oldGeometry);
+
+    if (newGeometry.size() == oldGeometry.size() || !m_fitTimer)
+        return;
+    m_fitTimer->start();
 }

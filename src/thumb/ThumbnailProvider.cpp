@@ -26,10 +26,7 @@ QImage ThumbnailProvider::requestImage(const QString &id, QSize *size, const QSi
     if (videoPath.isEmpty())
         return QImage();
 
-    bool needsGeneration = false;
-    QImage image = m_service->lookup(videoPath, &needsGeneration);
-    if (needsGeneration)
-        m_service->requestGeneration(videoPath);
+    QImage image = m_service->lookup(videoPath);
 
     if (size)
         *size = image.size();

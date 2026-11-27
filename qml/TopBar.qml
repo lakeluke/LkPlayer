@@ -8,6 +8,14 @@ Item {
     signal settingsRequested()
     signal libraryRequested()
 
+    readonly property var sortFields: ["scan", "title", "name", "path", "duration", "modified", "release"]
+    readonly property var sortFieldLabels: ["扫描顺序", "标题", "文件名", "路径", "时长", "修改时间", "发行时间"]
+
+    function sortIndex() {
+        const i = sortFields.indexOf(App.gridSortField);
+        return i >= 0 ? i : 0;
+    }
+
     Rectangle {
         anchors.fill: parent
         color: Theme.dark ? Qt.rgba(0.055, 0.059, 0.075, 0.92) : Qt.rgba(1, 1, 1, 0.86)
@@ -87,7 +95,7 @@ Item {
             anchors.left: searchInput.left
             anchors.verticalCenter: parent.verticalCenter
             visible: searchInput.text.length === 0 && !searchInput.activeFocus
-            text: "搜索标题、文件名、目录或标签…"
+            text: "搜索标题、文件名、目录、标签或演员…"
             color: Theme.textMuted
             font.pixelSize: Theme.fontBody
         }
@@ -176,6 +184,48 @@ Item {
                     font.pixelSize: Theme.fontCaption
                 }
             }
+        }
+
+        // Manual rescan
+        Rectangle {
+            width: 36
+            height: 36
+            radius: 18
+            color: rescanArea.containsMouse ? Theme.surfaceHover : (Theme.dark ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.045))
+            border.width: 1
+            border.color: Theme.border
+            opacity: App.scanning ? 0.5 : 1
+
+            Behavior on color {
+                ColorAnimation {
+                    duration: Theme.durationFast
+                }
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: "↻"
+                color: rescanArea.containsMouse ? Theme.accentSoft : Theme.textSecondary
+                font.pixelSize: 17
+            }
+
+            MouseArea {
+                id: rescanArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                enabled: !App.scanning && App.libraryRoot.length > 0
+                onClicked: App.rescan()
+            }
+        }
+
+        // Grid sort order (dropdown list instead of cycling on every click)
+        Dropdown {
+            height: 36
+            width: 120
+            model: root.sortFieldLabels
+            currentIndex: root.sortIndex()
+            onActivated: index => App.setGridSort(root.sortFields[index])
         }
 
         // Segmented view mode switch

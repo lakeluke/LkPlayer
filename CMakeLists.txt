@@ -27,6 +27,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     Svg
     Xml
     Concurrent
+    Sql
 )
 
 qt_standard_project_setup(REQUIRES 6.5)
@@ -98,11 +99,13 @@ set(LK_QML_FILES
     qml/TagFilterPanel.qml
     qml/MediaCard.qml
     qml/FolderCard.qml
+    qml/GridScrollBar.qml
     qml/PlayerControls.qml
     qml/MiniPlayer.qml
     qml/VideoSurface.qml
     qml/EmptyState.qml
     qml/DetailDrawer.qml
+    qml/Dropdown.qml
     qml/LibraryPage.qml
     qml/PlayerPage.qml
     qml/SettingsPage.qml
@@ -151,6 +154,7 @@ target_link_libraries(LkPlayer PRIVATE
     Qt6::Svg
     Qt6::Xml
     Qt6::Concurrent
+    Qt6::Sql
 )
 
 if(WIN32)
